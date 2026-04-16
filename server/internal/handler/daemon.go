@@ -118,10 +118,15 @@ func (h *Handler) resolveTaskWorkspaceID(r *http.Request, task db.AgentTaskQueue
 type DaemonRegisterRequest struct {
 	WorkspaceID string `json:"workspace_id"`
 	DaemonID    string `json:"daemon_id"`
-	DeviceName  string `json:"device_name"`
-	CLIVersion  string `json:"cli_version"` // multica CLI version
-	LaunchedBy  string `json:"launched_by"` // "desktop" when spawned by the Electron app
-	Runtimes    []struct {
+	// LegacyDaemonIDs lists prior hostname-derived daemon_ids this machine
+	// may have registered under before switching to a persistent UUID. The
+	// handler merges any matching runtime rows into the new row so agents
+	// and tasks keep working without manual intervention.
+	LegacyDaemonIDs []string `json:"legacy_daemon_ids"`
+	DeviceName      string   `json:"device_name"`
+	CLIVersion      string   `json:"cli_version"` // multica CLI version
+	LaunchedBy      string   `json:"launched_by"` // "desktop" when spawned by the Electron app
+	Runtimes        []struct {
 		Name    string `json:"name"`
 		Type    string `json:"type"`
 		Version string `json:"version"` // agent CLI version (claude/codex)
@@ -287,26 +292,12 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Migrate agents from old offline runtimes on the same machine to the
-		// newly registered runtime. Uses the runtime's owner_id (preserved via
-		// COALESCE on upsert) so migration works with both PAT and daemon tokens.
-		// Scoped by daemon_id prefix so that only old profile-suffixed runtimes
-		// (e.g. "hostname-staging") from this machine are affected.
-		effectiveOwnerID := registered.OwnerID
-		if effectiveOwnerID.Valid {
-			migrated, err := h.Queries.MigrateAgentsToRuntime(r.Context(), db.MigrateAgentsToRuntimeParams{
-				NewRuntimeID:   registered.ID,
-				WorkspaceID:    parseUUID(req.WorkspaceID),
-				Provider:       provider,
-				OwnerID:        effectiveOwnerID,
-				DaemonIDPrefix: strToText(req.DaemonID),
-			})
-			if err != nil {
-				slog.Warn("failed to migrate agents to new runtime", "runtime_id", uuidToString(registered.ID), "error", err)
-			} else if migrated > 0 {
-				slog.Info("migrated agents to new runtime", "runtime_id", uuidToString(registered.ID), "provider", provider, "migrated_count", migrated)
-			}
-		}
+		// Seamless migration from the previous hostname-derived identity. The
+		// daemon sends every legacy daemon_id it may have registered under
+		// (e.g. "host.local", "host", "host-staging"); for each match we
+		// reassign agents + tasks onto the new UUID-keyed row, then delete
+		// the stale row so there's only ever one runtime per machine.
+		h.mergeLegacyRuntimes(r, registered, provider, req.LegacyDaemonIDs)
 
 		resp = append(resp, runtimeToResponse(registered))
 	}
@@ -323,6 +314,72 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		"repos":         repoResp.Repos,
 		"repos_version": repoResp.ReposVersion,
 	})
+}
+
+// mergeLegacyRuntimes folds any runtime row keyed on a prior hostname-derived
+// daemon_id into the newly registered UUID-keyed row. For each legacy id it
+// reassigns agents and tasks, records the legacy id on the new row for audit,
+// then deletes the stale row so there's exactly one runtime per machine.
+//
+// Scoping by (workspace_id, provider) alone is sufficient because provider is
+// single-runtime-per-daemon and `unique (workspace_id, daemon_id, provider)`
+// guarantees at most one old row per legacy id.
+func (h *Handler) mergeLegacyRuntimes(r *http.Request, registered db.AgentRuntime, provider string, legacyIDs []string) {
+	for _, legacyID := range legacyIDs {
+		legacyID = strings.TrimSpace(legacyID)
+		if legacyID == "" {
+			continue
+		}
+
+		old, err := h.Queries.FindLegacyRuntimeByDaemonID(r.Context(), db.FindLegacyRuntimeByDaemonIDParams{
+			WorkspaceID: registered.WorkspaceID,
+			Provider:    provider,
+			DaemonID:    strToText(legacyID),
+		})
+		if err != nil {
+			// sql.ErrNoRows is the expected common case — nothing to migrate.
+			continue
+		}
+		if uuidToString(old.ID) == uuidToString(registered.ID) {
+			continue
+		}
+
+		agents, err := h.Queries.ReassignAgentsToRuntime(r.Context(), db.ReassignAgentsToRuntimeParams{
+			NewRuntimeID: registered.ID,
+			OldRuntimeID: old.ID,
+		})
+		if err != nil {
+			slog.Warn("legacy runtime merge: reassign agents failed", "legacy_daemon_id", legacyID, "old_runtime_id", uuidToString(old.ID), "new_runtime_id", uuidToString(registered.ID), "error", err)
+			continue
+		}
+		tasks, err := h.Queries.ReassignTasksToRuntime(r.Context(), db.ReassignTasksToRuntimeParams{
+			NewRuntimeID: registered.ID,
+			OldRuntimeID: old.ID,
+		})
+		if err != nil {
+			slog.Warn("legacy runtime merge: reassign tasks failed", "legacy_daemon_id", legacyID, "old_runtime_id", uuidToString(old.ID), "new_runtime_id", uuidToString(registered.ID), "error", err)
+			continue
+		}
+		if err := h.Queries.RecordRuntimeLegacyDaemonID(r.Context(), db.RecordRuntimeLegacyDaemonIDParams{
+			ID:             registered.ID,
+			LegacyDaemonID: strToText(legacyID),
+		}); err != nil {
+			slog.Warn("legacy runtime merge: record legacy daemon_id failed", "legacy_daemon_id", legacyID, "error", err)
+		}
+		if err := h.Queries.DeleteAgentRuntime(r.Context(), old.ID); err != nil {
+			slog.Warn("legacy runtime merge: delete old runtime failed", "old_runtime_id", uuidToString(old.ID), "error", err)
+			continue
+		}
+
+		slog.Info("legacy runtime merged",
+			"legacy_daemon_id", legacyID,
+			"old_runtime_id", uuidToString(old.ID),
+			"new_runtime_id", uuidToString(registered.ID),
+			"provider", provider,
+			"agents_reassigned", agents,
+			"tasks_reassigned", tasks,
+		)
+	}
 }
 
 func (h *Handler) GetDaemonWorkspaceRepos(w http.ResponseWriter, r *http.Request) {

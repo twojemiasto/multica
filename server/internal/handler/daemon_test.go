@@ -644,3 +644,185 @@ func TestGetDaemonWorkspaceRepos_VersionIgnoresOrderAndDescription(t *testing.T)
 		t.Fatalf("expected repos_version to change when URL set changes, got %s", version3)
 	}
 }
+
+// TestDaemonRegister_MergesLegacyDaemonIDRuntime simulates the migration path
+// for an existing user whose runtime was previously keyed on a hostname-derived
+// daemon_id (e.g. "MacBook-Pro.local"). After the daemon switches to a stable
+// UUID, the registration payload lists the old id under `legacy_daemon_ids`.
+// The server must:
+//
+//   - reassign every agent pointing at the old runtime row to the new row,
+//   - reassign every task (agent_task_queue.runtime_id) onto the new row,
+//   - delete the stale old row so there's exactly one runtime per machine,
+//   - record the legacy daemon_id on the new row for traceability.
+//
+// This is the acceptance path from MUL-975: hostname drift must no longer
+// orphan agents on stale runtime rows.
+func TestDaemonRegister_MergesLegacyDaemonIDRuntime(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+
+	ctx := context.Background()
+	const legacyDaemonID = "TestMachine.local"
+	const newDaemonID = "0192a7a0-9ab3-7c3f-9f1c-4a6fe8c4e801"
+
+	// Seed a legacy runtime row keyed on the hostname-derived id.
+	var legacyRuntimeID string
+	if err := testPool.QueryRow(ctx, `
+		INSERT INTO agent_runtime (workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, owner_id, last_seen_at)
+		VALUES ($1, $2, 'legacy-runtime', 'local', 'claude', 'offline', 'TestMachine.local', '{}'::jsonb, $3, now() - interval '1 hour')
+		RETURNING id
+	`, testWorkspaceID, legacyDaemonID, testUserID).Scan(&legacyRuntimeID); err != nil {
+		t.Fatalf("seed legacy runtime: %v", err)
+	}
+	t.Cleanup(func() {
+		testPool.Exec(context.Background(), `DELETE FROM agent_runtime WHERE id = $1`, legacyRuntimeID)
+	})
+
+	// An agent bound to the legacy runtime.
+	var legacyAgentID string
+	if err := testPool.QueryRow(ctx, `
+		INSERT INTO agent (workspace_id, name, runtime_mode, runtime_config, runtime_id, visibility, max_concurrent_tasks)
+		VALUES ($1, 'legacy-agent', 'local', '{}'::jsonb, $2, 'workspace', 1)
+		RETURNING id
+	`, testWorkspaceID, legacyRuntimeID).Scan(&legacyAgentID); err != nil {
+		t.Fatalf("seed legacy agent: %v", err)
+	}
+	t.Cleanup(func() {
+		testPool.Exec(context.Background(), `DELETE FROM agent WHERE id = $1`, legacyAgentID)
+	})
+
+	// An issue + task also bound to the legacy runtime (tasks have ON DELETE
+	// CASCADE, so without reassignment deleting the legacy row would silently
+	// drop historical tasks).
+	var legacyIssueID, legacyTaskID string
+	if err := testPool.QueryRow(ctx, `
+		INSERT INTO issue (workspace_id, title, status, priority, creator_id, creator_type, number, position)
+		VALUES ($1, 'legacy-task-owner', 'todo', 'medium', $2, 'member', 97501, 0)
+		RETURNING id
+	`, testWorkspaceID, testUserID).Scan(&legacyIssueID); err != nil {
+		t.Fatalf("seed legacy issue: %v", err)
+	}
+	t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM issue WHERE id = $1`, legacyIssueID) })
+
+	if err := testPool.QueryRow(ctx, `
+		INSERT INTO agent_task_queue (agent_id, issue_id, status, runtime_id)
+		VALUES ($1, $2, 'completed', $3)
+		RETURNING id
+	`, legacyAgentID, legacyIssueID, legacyRuntimeID).Scan(&legacyTaskID); err != nil {
+		t.Fatalf("seed legacy task: %v", err)
+	}
+	t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM agent_task_queue WHERE id = $1`, legacyTaskID) })
+
+	// Register under the new stable UUID, declaring the prior hostname-derived
+	// id as legacy. The handler should merge the legacy row into the new one.
+	w := httptest.NewRecorder()
+	req := newRequest("POST", "/api/daemon/register", map[string]any{
+		"workspace_id":      testWorkspaceID,
+		"daemon_id":         newDaemonID,
+		"legacy_daemon_ids": []string{legacyDaemonID},
+		"device_name":       "TestMachine",
+		"runtimes": []map[string]any{
+			{"name": "test-runtime", "type": "claude", "version": "1.0.0", "status": "online"},
+		},
+	})
+	testHandler.DaemonRegister(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("DaemonRegister: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	runtimes := resp["runtimes"].([]any)
+	newRuntimeID := runtimes[0].(map[string]any)["id"].(string)
+	t.Cleanup(func() {
+		testPool.Exec(context.Background(), `DELETE FROM agent_runtime WHERE id = $1`, newRuntimeID)
+	})
+
+	if newRuntimeID == legacyRuntimeID {
+		t.Fatalf("expected a new runtime row, got the legacy id back")
+	}
+
+	// Agent should now point at the new runtime.
+	var agentRuntimeID string
+	if err := testPool.QueryRow(ctx, `SELECT runtime_id FROM agent WHERE id = $1`, legacyAgentID).Scan(&agentRuntimeID); err != nil {
+		t.Fatalf("read agent runtime_id: %v", err)
+	}
+	if agentRuntimeID != newRuntimeID {
+		t.Fatalf("agent not reassigned: got runtime_id=%s, want %s", agentRuntimeID, newRuntimeID)
+	}
+
+	// Task should be reassigned (not dropped).
+	var taskRuntimeID string
+	if err := testPool.QueryRow(ctx, `SELECT runtime_id FROM agent_task_queue WHERE id = $1`, legacyTaskID).Scan(&taskRuntimeID); err != nil {
+		t.Fatalf("read task runtime_id: %v", err)
+	}
+	if taskRuntimeID != newRuntimeID {
+		t.Fatalf("task not reassigned: got runtime_id=%s, want %s", taskRuntimeID, newRuntimeID)
+	}
+
+	// Legacy runtime row must be gone — no more "online + offline" duplicates
+	// for the same machine.
+	var legacyCount int
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM agent_runtime WHERE id = $1`, legacyRuntimeID).Scan(&legacyCount); err != nil {
+		t.Fatalf("count legacy runtime: %v", err)
+	}
+	if legacyCount != 0 {
+		t.Fatalf("expected legacy runtime row to be deleted, still present")
+	}
+
+	// New row should record which legacy id it subsumed, for debug/audit.
+	var legacyTrace *string
+	if err := testPool.QueryRow(ctx, `SELECT legacy_daemon_id FROM agent_runtime WHERE id = $1`, newRuntimeID).Scan(&legacyTrace); err != nil {
+		t.Fatalf("read legacy_daemon_id: %v", err)
+	}
+	if legacyTrace == nil || *legacyTrace != legacyDaemonID {
+		t.Fatalf("expected legacy_daemon_id=%q, got %v", legacyDaemonID, legacyTrace)
+	}
+}
+
+// TestDaemonRegister_LegacyIDNoMatchIsNoop guards the common case where the
+// daemon sends legacy candidates but no matching row exists (e.g. first
+// registration on a fresh machine). Registration must still succeed, the new
+// row must not have a spurious legacy_daemon_id recorded, and no unrelated
+// rows may be touched.
+func TestDaemonRegister_LegacyIDNoMatchIsNoop(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+
+	ctx := context.Background()
+
+	w := httptest.NewRecorder()
+	req := newRequest("POST", "/api/daemon/register", map[string]any{
+		"workspace_id":      testWorkspaceID,
+		"daemon_id":         "0192a7a1-5e3c-7be9-9a7d-6e0f1cb3deab",
+		"legacy_daemon_ids": []string{"NeverSeenHost", "NeverSeenHost.local"},
+		"device_name":       "NeverSeenHost",
+		"runtimes": []map[string]any{
+			{"name": "fresh-runtime", "type": "claude", "version": "1.0.0", "status": "online"},
+		},
+	})
+	testHandler.DaemonRegister(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("DaemonRegister: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	json.NewDecoder(w.Body).Decode(&resp)
+	runtimeID := resp["runtimes"].([]any)[0].(map[string]any)["id"].(string)
+	t.Cleanup(func() {
+		testPool.Exec(context.Background(), `DELETE FROM agent_runtime WHERE id = $1`, runtimeID)
+	})
+
+	var legacy *string
+	if err := testPool.QueryRow(ctx, `SELECT legacy_daemon_id FROM agent_runtime WHERE id = $1`, runtimeID).Scan(&legacy); err != nil {
+		t.Fatalf("read legacy_daemon_id: %v", err)
+	}
+	if legacy != nil {
+		t.Fatalf("expected legacy_daemon_id to stay NULL when no merge occurred, got %q", *legacy)
+	}
+}
