@@ -7,16 +7,8 @@ import { WebProviders } from "@/components/web-providers";
 import { LocaleSync } from "@/components/locale-sync";
 import "./globals.css";
 
-// Font stack: Inter for Latin UI text + system Chinese fonts for zh content.
-// Desktop app uses the same stack via apps/desktop/src/renderer/src/globals.css —
-// keep the CJK fallback tail in sync across both files. The Inter primary family
-// differs by design: next/font produces `__Inter_xxx` (with a synthetic size-adjusted
-// fallback face to prevent FOUT layout shift); desktop uses fontsource's "Inter Variable".
-// Both resolve to Inter glyphs, so rendering is identical in practice.
-// Currently covers English + Simplified Chinese. When ja/ko i18n lands, extend
-// the tail with Hiragino Kaku Gothic ProN / Yu Gothic / Apple SD Gothic Neo / Malgun Gothic.
-// Per-character fallback: Latin chars render with Inter, Chinese chars with
-// PingFang SC (macOS) / Microsoft YaHei (Windows) / Noto Sans CJK SC (Linux).
+// Font stack: Inter for Latin UI text. CJK fallbacks kept for user-supplied content
+// (issue bodies, comments) even though the UI is EN/PL only.
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-sans",

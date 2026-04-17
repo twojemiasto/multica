@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CoreProvider } from "@multica/core/platform";
+import { LocaleProvider } from "@multica/views/i18n";
 import { useAuthStore } from "@multica/core/auth";
 import { workspaceKeys, workspaceListOptions } from "@multica/core/workspace/queries";
 import { api } from "@multica/core/api";
@@ -194,7 +195,9 @@ export default function App() {
         wsUrl={import.meta.env.VITE_WS_URL || "ws://localhost:8080/ws"}
         onLogout={handleDaemonLogout}
       >
-        <AppContent />
+        <LocaleProvider>
+          <AppContent />
+        </LocaleProvider>
       </CoreProvider>
       <Toaster />
       <UpdateNotification />

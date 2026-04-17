@@ -1,6 +1,7 @@
 "use client";
 
 import { CoreProvider } from "@multica/core/platform";
+import { LocaleProvider } from "@multica/views/i18n";
 import { WebNavigationProvider } from "@/platform/navigation";
 import {
   setLoggedInCookie,
@@ -42,7 +43,9 @@ export function WebProviders({ children }: { children: React.ReactNode }) {
       onLogin={setLoggedInCookie}
       onLogout={clearLoggedInCookie}
     >
-      <WebNavigationProvider>{children}</WebNavigationProvider>
+      <LocaleProvider>
+        <WebNavigationProvider>{children}</WebNavigationProvider>
+      </LocaleProvider>
     </CoreProvider>
   );
 }
