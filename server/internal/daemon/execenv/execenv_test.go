@@ -762,13 +762,14 @@ func TestPrepareCodexHomeSkipsMissingFiles(t *testing.T) {
 	}
 }
 
-func TestEnsureCodexNetworkAccessCreatesDefault(t *testing.T) {
+func TestEnsureCodexSandboxConfigCreatesDefaultLinux(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.toml")
 
-	if err := ensureCodexNetworkAccess(configPath); err != nil {
-		t.Fatalf("ensureCodexNetworkAccess failed: %v", err)
+	policy := codexSandboxPolicyFor("linux", "0.121.0")
+	if err := ensureCodexSandboxConfig(configPath, policy, "0.121.0", testLogger()); err != nil {
+		t.Fatalf("ensureCodexSandboxConfig failed: %v", err)
 	}
 
 	data, err := os.ReadFile(configPath)
@@ -776,6 +777,9 @@ func TestEnsureCodexNetworkAccessCreatesDefault(t *testing.T) {
 		t.Fatalf("failed to read config.toml: %v", err)
 	}
 	s := string(data)
+	if !strings.Contains(s, multicaManagedBeginMarker) || !strings.Contains(s, multicaManagedEndMarker) {
+		t.Errorf("missing managed block markers, got:\n%s", s)
+	}
 	if !strings.Contains(s, `sandbox_mode = "workspace-write"`) {
 		t.Error("missing sandbox_mode")
 	}
@@ -787,40 +791,56 @@ func TestEnsureCodexNetworkAccessCreatesDefault(t *testing.T) {
 	}
 }
 
-func TestEnsureCodexNetworkAccessPreservesExisting(t *testing.T) {
+func TestEnsureCodexSandboxConfigDarwinFallsBack(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.toml")
 
-	existing := `model = "o3"
-
-[sandbox_workspace_write]
-network_access = true
-`
-	os.WriteFile(configPath, []byte(existing), 0o644)
-
-	if err := ensureCodexNetworkAccess(configPath); err != nil {
-		t.Fatalf("ensureCodexNetworkAccess failed: %v", err)
+	policy := codexSandboxPolicyFor("darwin", "0.121.0")
+	if err := ensureCodexSandboxConfig(configPath, policy, "0.121.0", testLogger()); err != nil {
+		t.Fatalf("ensureCodexSandboxConfig failed: %v", err)
 	}
 
-	data, _ := os.ReadFile(configPath)
-	if string(data) != existing {
-		t.Errorf("config should be unchanged, got:\n%s", data)
+	s, _ := os.ReadFile(configPath)
+	if !strings.Contains(string(s), `sandbox_mode = "danger-full-access"`) {
+		t.Errorf("expected danger-full-access fallback on macOS, got:\n%s", s)
+	}
+	if strings.Contains(string(s), "[sandbox_workspace_write]") {
+		t.Errorf("should not emit workspace-write section on macOS fallback, got:\n%s", s)
 	}
 }
 
-func TestEnsureCodexNetworkAccessAppendsToExisting(t *testing.T) {
+func TestEnsureCodexSandboxConfigIsIdempotent(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.toml")
+
+	policy := codexSandboxPolicyFor("linux", "0.121.0")
+	for i := 0; i < 3; i++ {
+		if err := ensureCodexSandboxConfig(configPath, policy, "0.121.0", testLogger()); err != nil {
+			t.Fatalf("pass %d: %v", i, err)
+		}
+	}
+	data, _ := os.ReadFile(configPath)
+	// The managed block should appear exactly once.
+	if n := strings.Count(string(data), multicaManagedBeginMarker); n != 1 {
+		t.Errorf("expected exactly 1 managed block, got %d in:\n%s", n, data)
+	}
+}
+
+func TestEnsureCodexSandboxConfigPreservesUserContent(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.toml")
 
 	existing := `model = "o3"
-sandbox_mode = "workspace-write"
+approval_policy = "on-failure"
 `
 	os.WriteFile(configPath, []byte(existing), 0o644)
 
-	if err := ensureCodexNetworkAccess(configPath); err != nil {
-		t.Fatalf("ensureCodexNetworkAccess failed: %v", err)
+	policy := codexSandboxPolicyFor("linux", "0.121.0")
+	if err := ensureCodexSandboxConfig(configPath, policy, "0.121.0", testLogger()); err != nil {
+		t.Fatalf("ensureCodexSandboxConfig failed: %v", err)
 	}
 
 	data, _ := os.ReadFile(configPath)
@@ -828,36 +848,80 @@ sandbox_mode = "workspace-write"
 	if !strings.Contains(s, `model = "o3"`) {
 		t.Error("lost existing model setting")
 	}
-	if !strings.Contains(s, "[sandbox_workspace_write]") {
-		t.Error("missing [sandbox_workspace_write] section")
+	if !strings.Contains(s, "approval_policy") {
+		t.Error("lost existing approval_policy")
 	}
 	if !strings.Contains(s, "network_access = true") {
 		t.Error("missing network_access = true")
 	}
 }
 
-func TestEnsureCodexNetworkAccessAddsMissingKey(t *testing.T) {
+func TestEnsureCodexSandboxConfigStripsLegacyInlineDirectives(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.toml")
 
-	// Section exists but without network_access.
-	existing := `[sandbox_workspace_write]
-allow_commands = ["git"]
+	// Simulate a config.toml produced by an older daemon version that wrote
+	// sandbox directives inline (no managed block markers). After migration,
+	// the inline directives should be gone and only the managed block should
+	// carry them.
+	existing := `model = "o3"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true
 `
 	os.WriteFile(configPath, []byte(existing), 0o644)
 
-	if err := ensureCodexNetworkAccess(configPath); err != nil {
-		t.Fatalf("ensureCodexNetworkAccess failed: %v", err)
+	policy := codexSandboxPolicyFor("darwin", "0.121.0")
+	if err := ensureCodexSandboxConfig(configPath, policy, "0.121.0", testLogger()); err != nil {
+		t.Fatalf("ensureCodexSandboxConfig failed: %v", err)
 	}
 
 	data, _ := os.ReadFile(configPath)
 	s := string(data)
-	if !strings.Contains(s, "network_access = true") {
-		t.Error("missing network_access = true")
+	if !strings.Contains(s, `model = "o3"`) {
+		t.Error("should have preserved unrelated user config")
 	}
-	if !strings.Contains(s, `allow_commands = ["git"]`) {
-		t.Error("lost existing allow_commands")
+	// Inline sandbox_mode and [sandbox_workspace_write] should be stripped.
+	if strings.Count(s, "sandbox_mode") != 1 {
+		t.Errorf("expected exactly one sandbox_mode line (inside managed block), got:\n%s", s)
+	}
+	if strings.Contains(s, "[sandbox_workspace_write]") {
+		t.Errorf("darwin fallback should not retain workspace-write section:\n%s", s)
+	}
+	if !strings.Contains(s, `sandbox_mode = "danger-full-access"`) {
+		t.Errorf("expected danger-full-access on macOS, got:\n%s", s)
+	}
+}
+
+func TestCodexSandboxPolicyFor(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		goos      string
+		version   string
+		wantMode  string
+		wantNet   bool
+	}{
+		{"linux any version", "linux", "0.100.0", "workspace-write", true},
+		{"linux unknown version", "linux", "", "workspace-write", true},
+		{"darwin old version", "darwin", "0.121.0", "danger-full-access", false},
+		{"darwin unknown version", "darwin", "", "danger-full-access", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := codexSandboxPolicyFor(tc.goos, tc.version)
+			if p.Mode != tc.wantMode {
+				t.Errorf("mode = %q, want %q", p.Mode, tc.wantMode)
+			}
+			if p.NetworkAccess != tc.wantNet {
+				t.Errorf("network_access = %v, want %v", p.NetworkAccess, tc.wantNet)
+			}
+			if p.Reason == "" {
+				t.Error("expected non-empty Reason")
+			}
+		})
 	}
 }
 
@@ -869,6 +933,7 @@ func TestPrepareCodexHomeEnsuresNetworkAccess(t *testing.T) {
 	t.Setenv("CODEX_HOME", sharedHome)
 
 	codexHome := filepath.Join(t.TempDir(), "codex-home")
+	// Default prepareCodexHome assumes linux-like behavior.
 	if err := prepareCodexHome(codexHome, testLogger()); err != nil {
 		t.Fatalf("prepareCodexHome failed: %v", err)
 	}
@@ -914,7 +979,7 @@ func TestReuseRestoresCodexHome(t *testing.T) {
 	}
 
 	// Reuse should restore CodexHome.
-	reused := Reuse(env.WorkDir, "codex", TaskContextForEnv{IssueID: "reuse-test"}, testLogger())
+	reused := Reuse(env.WorkDir, "codex", "", TaskContextForEnv{IssueID: "reuse-test"}, testLogger())
 	if reused == nil {
 		t.Fatal("Reuse returned nil")
 	}
@@ -922,13 +987,14 @@ func TestReuseRestoresCodexHome(t *testing.T) {
 		t.Fatal("expected CodexHome to be restored after Reuse")
 	}
 
-	// Verify config.toml has network access.
+	// Verify config.toml has a managed block (exact mode depends on host
+	// platform; either workspace-write or danger-full-access is valid).
 	data, err := os.ReadFile(filepath.Join(reused.CodexHome, "config.toml"))
 	if err != nil {
 		t.Fatalf("config.toml not found in reused CodexHome: %v", err)
 	}
-	if !strings.Contains(string(data), "network_access = true") {
-		t.Error("reused config.toml missing network_access = true")
+	if !strings.Contains(string(data), multicaManagedBeginMarker) {
+		t.Error("reused config.toml missing multica-managed block")
 	}
 }
 
