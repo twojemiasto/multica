@@ -644,3 +644,83 @@ func TestGetDaemonWorkspaceRepos_VersionIgnoresOrderAndDescription(t *testing.T)
 		t.Fatalf("expected repos_version to change when URL set changes, got %s", version3)
 	}
 }
+
+// TestClaimTaskByRuntime_AutopilotTaskCarriesWorkspace is a regression test
+// for the cross-workspace contamination bug (#1235): when an autopilot task
+// has no issue_id and no chat_session_id, the claim response must still
+// carry a concrete workspace_id resolved via the autopilot run. Shipping an
+// empty workspace here caused the daemon to spawn the agent with an empty
+// MULTICA_WORKSPACE_ID, and the CLI would silently fall back to the
+// user-global config, talking to an unrelated workspace.
+func TestClaimTaskByRuntime_AutopilotTaskCarriesWorkspace(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+
+	ctx := context.Background()
+
+	var agentID, runtimeID string
+	if err := testPool.QueryRow(ctx,
+		`SELECT id, runtime_id FROM agent WHERE workspace_id = $1 LIMIT 1`,
+		testWorkspaceID,
+	).Scan(&agentID, &runtimeID); err != nil {
+		t.Fatalf("setup: get agent: %v", err)
+	}
+
+	// An autopilot in the test workspace.
+	var autopilotID string
+	if err := testPool.QueryRow(ctx, `
+		INSERT INTO autopilot (
+			workspace_id, title, assignee_id, priority, status,
+			execution_mode, created_by_type, created_by_id
+		) VALUES ($1, 'autopilot-claim-test', $2, 'medium', 'active',
+			'run_only', 'member', $3)
+		RETURNING id
+	`, testWorkspaceID, agentID, testUserID).Scan(&autopilotID); err != nil {
+		t.Fatalf("setup: create autopilot: %v", err)
+	}
+	t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM autopilot WHERE id = $1`, autopilotID) })
+
+	// One run of that autopilot (manual, running — the state a run_only task
+	// is in while the agent is processing it).
+	var runID string
+	if err := testPool.QueryRow(ctx, `
+		INSERT INTO autopilot_run (autopilot_id, source, status)
+		VALUES ($1, 'manual', 'running')
+		RETURNING id
+	`, autopilotID).Scan(&runID); err != nil {
+		t.Fatalf("setup: create autopilot run: %v", err)
+	}
+
+	// The task itself — queued, no issue, no chat session, only autopilot_run_id.
+	var taskID string
+	if err := testPool.QueryRow(ctx, `
+		INSERT INTO agent_task_queue (agent_id, runtime_id, issue_id, status, priority, autopilot_run_id)
+		VALUES ($1, $2, NULL, 'queued', 2, $3)
+		RETURNING id
+	`, agentID, runtimeID, runID).Scan(&taskID); err != nil {
+		t.Fatalf("setup: create autopilot task: %v", err)
+	}
+	t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM agent_task_queue WHERE id = $1`, taskID) })
+
+	w := httptest.NewRecorder()
+	req := newDaemonTokenRequest("POST", "/api/daemon/runtimes/"+runtimeID+"/claim-task", nil,
+		testWorkspaceID, "legit-daemon")
+	req = withURLParam(req, "runtimeId", runtimeID)
+
+	testHandler.ClaimTaskByRuntime(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("ClaimTaskByRuntime: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp AgentTaskResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.WorkspaceID != testWorkspaceID {
+		t.Fatalf("ClaimTaskByRuntime: expected workspace_id=%s, got %q", testWorkspaceID, resp.WorkspaceID)
+	}
+	if resp.ID == "" || resp.ID != taskID {
+		t.Fatalf("ClaimTaskByRuntime: expected task id=%s, got %q", taskID, resp.ID)
+	}
+}

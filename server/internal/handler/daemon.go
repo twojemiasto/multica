@@ -67,7 +67,7 @@ func (h *Handler) requireDaemonTaskAccess(w http.ResponseWriter, r *http.Request
 		return db.AgentTaskQueue{}, false
 	}
 
-	wsID := h.resolveTaskWorkspaceID(r, task)
+	wsID := h.TaskService.ResolveTaskWorkspaceID(r.Context(), task)
 	if wsID == "" {
 		writeError(w, http.StatusNotFound, "task not found")
 		return db.AgentTaskQueue{}, false
@@ -94,29 +94,6 @@ func (h *Handler) verifyDaemonWorkspaceAccess(r *http.Request, workspaceID strin
 	}
 	_, err := h.getWorkspaceMember(r.Context(), userID, workspaceID)
 	return err == nil
-}
-
-// resolveTaskWorkspaceID derives the workspace ID from a task's linked entity
-// (issue, chat session, or autopilot run).
-func (h *Handler) resolveTaskWorkspaceID(r *http.Request, task db.AgentTaskQueue) string {
-	if task.IssueID.Valid {
-		if issue, err := h.Queries.GetIssue(r.Context(), task.IssueID); err == nil {
-			return uuidToString(issue.WorkspaceID)
-		}
-	}
-	if task.ChatSessionID.Valid {
-		if cs, err := h.Queries.GetChatSession(r.Context(), task.ChatSessionID); err == nil {
-			return uuidToString(cs.WorkspaceID)
-		}
-	}
-	if task.AutopilotRunID.Valid {
-		if run, err := h.Queries.GetAutopilotRun(r.Context(), task.AutopilotRunID); err == nil {
-			if ap, err := h.Queries.GetAutopilot(r.Context(), run.AutopilotID); err == nil {
-				return uuidToString(ap.WorkspaceID)
-			}
-		}
-	}
-	return ""
 }
 
 // ---------------------------------------------------------------------------
@@ -494,18 +471,34 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Include workspace ID and repos so the daemon can set up worktrees.
-	if task.IssueID.Valid {
-		if issue, err := h.Queries.GetIssue(r.Context(), task.IssueID); err == nil {
-			resp.WorkspaceID = uuidToString(issue.WorkspaceID)
-			if ws, err := h.Queries.GetWorkspace(r.Context(), issue.WorkspaceID); err == nil && ws.Repos != nil {
-				var repos []RepoData
-				if json.Unmarshal(ws.Repos, &repos) == nil && len(repos) > 0 {
-					resp.Repos = repos
-				}
-			}
-		}
+	// Workspace ID is mandatory — the daemon uses it to scope the work env and
+	// the agent CLI uses it as the only source of truth for every subsequent
+	// API call. Resolving via the service layer also covers autopilot tasks
+	// (neither IssueID nor ChatSessionID set). If we can't determine the
+	// workspace, fail loudly rather than ship an empty value that would let
+	// the agent fall back to a stale/foreign workspace.
+	resp.WorkspaceID = h.TaskService.ResolveTaskWorkspaceID(r.Context(), *task)
+	if resp.WorkspaceID == "" {
+		slog.Error("task claim: unresolvable workspace, rejecting",
+			"task_id", uuidToString(task.ID),
+			"runtime_id", runtimeID,
+			"has_issue", task.IssueID.Valid,
+			"has_chat", task.ChatSessionID.Valid,
+			"has_autopilot_run", task.AutopilotRunID.Valid,
+		)
+		writeError(w, http.StatusInternalServerError, "cannot resolve workspace for task")
+		return
+	}
 
+	// Load repos for the resolved workspace so the daemon can set up worktrees.
+	if ws, err := h.Queries.GetWorkspace(r.Context(), parseUUID(resp.WorkspaceID)); err == nil && ws.Repos != nil {
+		var repos []RepoData
+		if json.Unmarshal(ws.Repos, &repos) == nil && len(repos) > 0 {
+			resp.Repos = repos
+		}
+	}
+
+	if task.IssueID.Valid {
 		// Fetch the triggering comment content so the daemon can embed it
 		// directly in the agent prompt (prevents the agent from ignoring comments
 		// when stale output files exist in a reused workdir).
@@ -528,17 +521,10 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Chat task: populate workspace/session info from the chat_session table.
+	// Chat task: populate session/message info from the chat_session table.
 	if task.ChatSessionID.Valid {
 		if cs, err := h.Queries.GetChatSession(r.Context(), task.ChatSessionID); err == nil {
-			resp.WorkspaceID = uuidToString(cs.WorkspaceID)
 			resp.ChatSessionID = uuidToString(cs.ID)
-			if ws, err := h.Queries.GetWorkspace(r.Context(), cs.WorkspaceID); err == nil && ws.Repos != nil {
-				var repos []RepoData
-				if json.Unmarshal(ws.Repos, &repos) == nil && len(repos) > 0 {
-					resp.Repos = repos
-				}
-			}
 			// Resume from the chat session's persistent session.
 			if cs.SessionID.Valid {
 				resp.PriorSessionID = cs.SessionID.String
@@ -992,7 +978,7 @@ func (h *Handler) ListTaskMessagesByUser(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Verify the task belongs to the caller's workspace.
-	wsID := h.resolveTaskWorkspaceID(r, task)
+	wsID := h.TaskService.ResolveTaskWorkspaceID(r.Context(), task)
 	if wsID == "" || wsID != middleware.WorkspaceIDFromContext(r.Context()) {
 		writeError(w, http.StatusNotFound, "task not found")
 		return

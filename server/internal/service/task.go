@@ -479,7 +479,7 @@ func (s *TaskService) broadcastTaskDispatch(ctx context.Context, task db.AgentTa
 	payload["issue_id"] = util.UUIDToString(task.IssueID)
 	payload["agent_id"] = util.UUIDToString(task.AgentID)
 
-	workspaceID := s.resolveTaskWorkspaceID(ctx, task)
+	workspaceID := s.ResolveTaskWorkspaceID(ctx, task)
 	if workspaceID == "" {
 		return
 	}
@@ -493,7 +493,7 @@ func (s *TaskService) broadcastTaskDispatch(ctx context.Context, task db.AgentTa
 }
 
 func (s *TaskService) broadcastTaskEvent(ctx context.Context, eventType string, task db.AgentTaskQueue) {
-	workspaceID := s.resolveTaskWorkspaceID(ctx, task)
+	workspaceID := s.ResolveTaskWorkspaceID(ctx, task)
 	if workspaceID == "" {
 		return
 	}
@@ -515,10 +515,13 @@ func (s *TaskService) broadcastTaskEvent(ctx context.Context, eventType string, 
 	})
 }
 
-// resolveTaskWorkspaceID determines the workspace ID for a task.
+// ResolveTaskWorkspaceID determines the workspace ID for a task.
 // For issue tasks, it comes from the issue. For chat tasks, from the chat session.
 // For autopilot tasks, from the autopilot via its run.
-func (s *TaskService) resolveTaskWorkspaceID(ctx context.Context, task db.AgentTaskQueue) string {
+// Returns "" when the workspace cannot be determined — callers MUST treat an
+// empty result as a hard failure (not a default workspace), so that a task
+// with no resolvable workspace never falls back to cross-workspace state.
+func (s *TaskService) ResolveTaskWorkspaceID(ctx context.Context, task db.AgentTaskQueue) string {
 	if task.IssueID.Valid {
 		if issue, err := s.Queries.GetIssue(ctx, task.IssueID); err == nil {
 			return util.UUIDToString(issue.WorkspaceID)
@@ -540,7 +543,7 @@ func (s *TaskService) resolveTaskWorkspaceID(ctx context.Context, task db.AgentT
 }
 
 func (s *TaskService) broadcastChatDone(ctx context.Context, task db.AgentTaskQueue) {
-	workspaceID := s.resolveTaskWorkspaceID(ctx, task)
+	workspaceID := s.ResolveTaskWorkspaceID(ctx, task)
 	if workspaceID == "" {
 		return
 	}
