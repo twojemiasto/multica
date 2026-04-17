@@ -647,4 +647,26 @@ export const pl: LandingDict = {
       },
     ],
   },
+
+  mocks: {
+    properties: "Właściwości",
+    status: {
+      backlog: "Kolejka",
+      todo: "Do zrobienia",
+      inProgress: "W trakcie",
+      inReview: "W review",
+      done: "Zrobione",
+      blocked: "Zablokowane",
+      cancelled: "Anulowane",
+    },
+    priority: {
+      urgent: "Pilne",
+      high: "Wysoki",
+      medium: "Średni",
+      low: "Niski",
+      noPriority: "Bez priorytetu",
+    },
+    labelStatus: "Status",
+    labelPriority: "Priorytet",
+  },
 };

@@ -706,6 +706,13 @@ export const pl: AppDict = {
     runsWeekdays: "Uruchamia w dni robocze o",
     runsEvery: "Uruchamia w każdy",
     runsCustomSchedule: "Własny harmonogram",
+    daySun: "Nd",
+    dayMon: "Pn",
+    dayTue: "Wt",
+    dayWed: "Śr",
+    dayThu: "Cz",
+    dayFri: "Pt",
+    daySat: "So",
     templateDailyNewsTitle: "Dzienny przegląd wiadomości",
     templateDailyNewsSummary: "Wyszukaj i podsumuj dzisiejsze wiadomości dla zespołu",
     templateDailyNewsPrompt: `1. Przeszukaj sieć w poszukiwaniu wiadomości i ogłoszeń opublikowanych wyłącznie dziś (ściśle dzisiejsza data)

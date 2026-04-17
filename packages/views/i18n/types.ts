@@ -740,6 +740,13 @@ export type AppDict = {
     runsWeekdays: string;
     runsEvery: string;
     runsCustomSchedule: string;
+    daySun: string;
+    dayMon: string;
+    dayTue: string;
+    dayWed: string;
+    dayThu: string;
+    dayFri: string;
+    daySat: string;
     // Templates
     templateDailyNewsTitle: string;
     templateDailyNewsSummary: string;

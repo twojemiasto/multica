@@ -706,6 +706,13 @@ export const en: AppDict = {
     runsWeekdays: "Runs weekdays at",
     runsEvery: "Runs every",
     runsCustomSchedule: "Custom schedule",
+    daySun: "Sun",
+    dayMon: "Mon",
+    dayTue: "Tue",
+    dayWed: "Wed",
+    dayThu: "Thu",
+    dayFri: "Fri",
+    daySat: "Sat",
     templateDailyNewsTitle: "Daily news digest",
     templateDailyNewsSummary: "Search and summarize today's news for the team",
     templateDailyNewsPrompt: `1. Search the web for news and announcements published today only (strictly today's date)

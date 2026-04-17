@@ -101,4 +101,25 @@ export type LandingDict = {
       fixes?: string[];
     }[];
   };
+  mocks: {
+    properties: string;
+    status: {
+      backlog: string;
+      todo: string;
+      inProgress: string;
+      inReview: string;
+      done: string;
+      blocked: string;
+      cancelled: string;
+    };
+    priority: {
+      urgent: string;
+      high: string;
+      medium: string;
+      low: string;
+      noPriority: string;
+    };
+    labelStatus: string;
+    labelPriority: string;
+  };
 };

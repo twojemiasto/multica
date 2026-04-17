@@ -141,12 +141,30 @@ const statusCycle: IssueStatus[] = ["backlog", "todo", "in_progress", "in_review
 const priorityCycle: IssuePriority[] = ["none", "low", "medium", "high", "urgent"];
 
 function TeammatesVisual() {
+  const { t } = useLocale();
   const [status, setStatus] = useState<IssueStatus>("in_progress");
   const [priority, setPriority] = useState<IssuePriority>("medium");
   const [assignee, setAssignee] = useState<Assignee>(allAssignees[3]!); // Claude
   const [pickerOpen, setPickerOpen] = useState(true);
   const [statusOpen, setStatusOpen] = useState(false);
   const [priorityOpen, setPriorityOpen] = useState(false);
+
+  const statusKeyMap: Record<IssueStatus, keyof typeof t.mocks.status> = {
+    backlog: "backlog",
+    todo: "todo",
+    in_progress: "inProgress",
+    in_review: "inReview",
+    done: "done",
+    blocked: "blocked",
+    cancelled: "cancelled",
+  };
+  const priorityKeyMap: Record<IssuePriority, keyof typeof t.mocks.priority> = {
+    urgent: "urgent",
+    high: "high",
+    medium: "medium",
+    low: "low",
+    none: "noPriority",
+  };
 
   const cycleStatus = () => {
     const idx = statusCycle.indexOf(status);
@@ -231,18 +249,18 @@ function TeammatesVisual() {
             <div>
               <div className="flex items-center gap-1 text-xs font-medium mb-2">
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground rotate-90" />
-                Properties
+                {t.mocks.properties}
               </div>
               <div className="space-y-0.5 pl-2">
                 {/* Status — clickable with dropdown */}
                 <div className="relative">
-                  <PropRow label="Status">
+                  <PropRow label={t.mocks.labelStatus}>
                     <button
                       className="flex items-center gap-1.5 cursor-pointer rounded px-1 -mx-1 hover:bg-accent/30 transition-colors"
                       onClick={() => { setStatusOpen(!statusOpen); setPriorityOpen(false); }}
                     >
                       <StatusIcon status={status} className="h-3.5 w-3.5 shrink-0" />
-                      <span>{STATUS_CONFIG[status].label}</span>
+                      <span>{t.mocks.status[statusKeyMap[status]]}</span>
                     </button>
                   </PropRow>
                   {statusOpen && (
@@ -257,7 +275,7 @@ function TeammatesVisual() {
                           onClick={() => { setStatus(s); setStatusOpen(false); }}
                         >
                           <StatusIcon status={s} className="h-3.5 w-3.5 shrink-0" />
-                          {STATUS_CONFIG[s].label}
+                          {t.mocks.status[statusKeyMap[s]]}
                           {s === status && <Check className="ml-auto h-3.5 w-3.5" />}
                         </button>
                       ))}
@@ -267,13 +285,13 @@ function TeammatesVisual() {
 
                 {/* Priority — clickable with dropdown */}
                 <div className="relative">
-                  <PropRow label="Priority">
+                  <PropRow label={t.mocks.labelPriority}>
                     <button
                       className="flex items-center gap-1.5 cursor-pointer rounded px-1 -mx-1 hover:bg-accent/30 transition-colors"
                       onClick={() => { setPriorityOpen(!priorityOpen); setStatusOpen(false); }}
                     >
                       <PriorityIcon priority={priority} />
-                      <span>{PRIORITY_CONFIG[priority].label}</span>
+                      <span>{t.mocks.priority[priorityKeyMap[priority]]}</span>
                     </button>
                   </PropRow>
                   {priorityOpen && (
@@ -288,7 +306,7 @@ function TeammatesVisual() {
                           onClick={() => { setPriority(p); setPriorityOpen(false); }}
                         >
                           <PriorityIcon priority={p} />
-                          {PRIORITY_CONFIG[p].label}
+                          {t.mocks.priority[priorityKeyMap[p]]}
                           {p === priority && <Check className="ml-auto h-3.5 w-3.5" />}
                         </button>
                       ))}

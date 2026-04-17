@@ -27,7 +27,7 @@ export interface TriggerConfig {
 
 const FREQUENCIES: TriggerFrequency[] = ["hourly", "daily", "weekdays", "weekly", "custom"];
 
-const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_KEYS = ["daySun", "dayMon", "dayTue", "dayWed", "dayThu", "dayFri", "daySat"] as const;
 
 const COMMON_TIMEZONES = [
   "UTC",
@@ -134,8 +134,10 @@ function useDescribeTrigger(): (cfg: TriggerConfig) => string {
         return `${t.autopilot.runsDaily} ${formatTime12h(cfg.time)} ${offset}`;
       case "weekdays":
         return `${t.autopilot.runsWeekdays} ${formatTime12h(cfg.time)} ${offset}`;
-      case "weekly":
-        return `${t.autopilot.runsEvery} ${DAYS_OF_WEEK[cfg.dayOfWeek]} ${formatTime12h(cfg.time)} ${offset}`;
+      case "weekly": {
+        const dayKey = DAY_KEYS[cfg.dayOfWeek] ?? "daySun";
+        return `${t.autopilot.runsEvery} ${t.autopilot[dayKey]} ${formatTime12h(cfg.time)} ${offset}`;
+      }
       case "custom":
         return `${t.autopilot.runsCustomSchedule}: ${cfg.cronExpression}`;
     }
@@ -263,9 +265,9 @@ export function TriggerConfigSection({
             <div>
               <label className="text-xs text-muted-foreground">{t.autopilot.dayLabel}</label>
               <div className="flex gap-1 mt-1">
-                {DAYS_OF_WEEK.map((day, i) => (
+                {DAY_KEYS.map((dayKey, i) => (
                   <button
-                    key={day}
+                    key={dayKey}
                     type="button"
                     className={cn(
                       "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
@@ -275,7 +277,7 @@ export function TriggerConfigSection({
                     )}
                     onClick={() => onChange({ ...config, dayOfWeek: i })}
                   >
-                    {day}
+                    {t.autopilot[dayKey]}
                   </button>
                 ))}
               </div>
