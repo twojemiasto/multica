@@ -1,8 +1,9 @@
 "use client";
 
 import { Cloud, Monitor } from "lucide-react";
-import type { Agent } from "@multica/core/types";
+import type { Agent, AgentStatus } from "@multica/core/types";
 import { ActorAvatar } from "../../common/actor-avatar";
+import { useT } from "../../i18n";
 import { statusConfig } from "../config";
 
 export function AgentListItem({
@@ -14,8 +15,16 @@ export function AgentListItem({
   isSelected: boolean;
   onClick: () => void;
 }) {
+  const t = useT();
   const st = statusConfig[agent.status];
   const isArchived = !!agent.archived_at;
+  const statusLabels: Record<AgentStatus, string> = {
+    idle: t.agent.statusIdle,
+    working: t.agent.statusWorking,
+    blocked: t.agent.statusBlocked,
+    error: t.agent.statusError,
+    offline: t.agent.statusOffline,
+  };
 
   return (
     <button
@@ -37,11 +46,11 @@ export function AgentListItem({
         </div>
         <div className="flex items-center gap-1.5 mt-0.5">
           {isArchived ? (
-            <span className="text-xs text-muted-foreground">Archived</span>
+            <span className="text-xs text-muted-foreground">{t.agent.archivedLabel}</span>
           ) : (
             <>
               <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
-              <span className={`text-xs ${st.color}`}>{st.label}</span>
+              <span className={`text-xs ${st.color}`}>{statusLabels[agent.status]}</span>
             </>
           )}
         </div>

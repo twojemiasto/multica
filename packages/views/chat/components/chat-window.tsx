@@ -35,11 +35,13 @@ import { ChatResizeHandles } from "./chat-resize-handles";
 import { useChatResize } from "./use-chat-resize";
 import { createLogger } from "@multica/core/logger";
 import type { Agent, ChatMessage, ChatSession } from "@multica/core/types";
+import { useT } from "../../i18n";
 
 const uiLogger = createLogger("chat.ui");
 const apiLogger = createLogger("chat.api");
 
 export function ChatWindow() {
+  const t = useT();
   const wsId = useWorkspaceId();
   const isOpen = useChatStore((s) => s.isOpen);
   const activeSessionId = useChatStore((s) => s.activeSessionId);
@@ -331,7 +333,7 @@ export function ChatWindow() {
             >
               <Plus />
             </TooltipTrigger>
-            <TooltipContent side="top">New chat</TooltipContent>
+            <TooltipContent side="top">{t.chat.newChat}</TooltipContent>
           </Tooltip>
           <SessionDropdown
             sessions={sessions}
@@ -340,6 +342,7 @@ export function ChatWindow() {
             agents={agents}
             activeSessionId={activeSessionId}
             onSelectSession={handleSelectSession}
+            t={t}
           />
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
@@ -357,7 +360,7 @@ export function ChatWindow() {
               {isAtMax ? <Minimize2 /> : <Maximize2 />}
             </TooltipTrigger>
             <TooltipContent side="top">
-              {isAtMax ? "Restore" : "Expand"}
+              {isAtMax ? t.chat.restore : t.chat.expand}
             </TooltipContent>
           </Tooltip>
           <Tooltip>
@@ -373,7 +376,7 @@ export function ChatWindow() {
             >
               <Minus />
             </TooltipTrigger>
-            <TooltipContent side="top">Minimize</TooltipContent>
+            <TooltipContent side="top">{t.chat.minimize}</TooltipContent>
           </Tooltip>
         </div>
       </div>
@@ -391,6 +394,7 @@ export function ChatWindow() {
         <EmptyState
           agentName={activeAgent?.name}
           onPickPrompt={(text) => handleSend(text)}
+          t={t}
         />
       )}
 
@@ -407,6 +411,7 @@ export function ChatWindow() {
             activeAgent={activeAgent}
             userId={user?.id}
             onSelect={handleSelectAgent}
+            t={t}
           />
         }
       />
@@ -424,11 +429,13 @@ function AgentDropdown({
   activeAgent,
   userId,
   onSelect,
+  t,
 }: {
   agents: Agent[];
   activeAgent: Agent | null;
   userId: string | undefined;
   onSelect: (agent: Agent) => void;
+  t: ReturnType<typeof useT>;
 }) {
   // Split into the user's own agents and everyone else so the menu groups
   // them — matches the old AgentSelector layout.
@@ -443,7 +450,7 @@ function AgentDropdown({
   }, [agents, userId]);
 
   if (!activeAgent) {
-    return <span className="text-xs text-muted-foreground">No agents</span>;
+    return <span className="text-xs text-muted-foreground">{t.chat.noAgents}</span>;
   }
 
   return (
@@ -456,7 +463,7 @@ function AgentDropdown({
       <DropdownMenuContent align="start" side="top" className="max-h-80 w-auto max-w-64">
         {mine.length > 0 && (
           <DropdownMenuGroup>
-            <DropdownMenuLabel>My agents</DropdownMenuLabel>
+            <DropdownMenuLabel>{t.chat.myAgents}</DropdownMenuLabel>
             {mine.map((agent) => (
               <AgentMenuItem
                 key={agent.id}
@@ -470,7 +477,7 @@ function AgentDropdown({
         {mine.length > 0 && others.length > 0 && <DropdownMenuSeparator />}
         {others.length > 0 && (
           <DropdownMenuGroup>
-            <DropdownMenuLabel>Others</DropdownMenuLabel>
+            <DropdownMenuLabel>{t.chat.others}</DropdownMenuLabel>
             {others.map((agent) => (
               <AgentMenuItem
                 key={agent.id}
@@ -519,15 +526,17 @@ function SessionDropdown({
   agents,
   activeSessionId,
   onSelectSession,
+  t,
 }: {
   sessions: ChatSession[];
   agents: Agent[];
   activeSessionId: string | null;
   onSelectSession: (session: ChatSession) => void;
+  t: ReturnType<typeof useT>;
 }) {
   const agentById = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
   const activeSession = sessions.find((s) => s.id === activeSessionId);
-  const title = activeSession?.title?.trim() || "New chat";
+  const title = activeSession?.title?.trim() || t.chat.newChat;
   const triggerAgent = activeSession ? agentById.get(activeSession.agent_id) ?? null : null;
 
   return (
@@ -540,7 +549,7 @@ function SessionDropdown({
       <DropdownMenuContent align="start" className="max-h-80 w-auto min-w-56 max-w-80">
         {sessions.length === 0 ? (
           <div className="px-2 py-1.5 text-xs text-muted-foreground">
-            No previous chats
+            {t.chat.noPreviousChats}
           </div>
         ) : (
           sessions.map((session) => {
@@ -558,7 +567,7 @@ function SessionDropdown({
                   <span className="size-6 shrink-0" />
                 )}
                 <span className="truncate flex-1 text-sm">
-                  {session.title?.trim() || "New chat"}
+                  {session.title?.trim() || t.chat.newChat}
                 </span>
                 {session.has_unread && (
                   <span className="size-1.5 shrink-0 rounded-full bg-brand" />
@@ -589,29 +598,30 @@ function AgentAvatarSmall({ agent }: { agent: Agent }) {
  * immediately — ChatGPT-style — because the point is showing users what
  * this chat is for: operating on the workspace, not open-ended Q&A.
  */
-const STARTER_PROMPTS: { icon: string; text: string }[] = [
-  { icon: "📋", text: "List my open tasks by priority" },
-  { icon: "📝", text: "Summarize what I did today" },
-  { icon: "💡", text: "Plan what to work on next" },
-];
-
 function EmptyState({
   agentName,
   onPickPrompt,
+  t,
 }: {
   agentName?: string;
   onPickPrompt: (text: string) => void;
+  t: ReturnType<typeof useT>;
 }) {
+  const starterPrompts: { icon: string; text: string }[] = [
+    { icon: "📋", text: t.chat.starterTasks },
+    { icon: "📝", text: t.chat.starterSummary },
+    { icon: "💡", text: t.chat.starterPlan },
+  ];
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-8">
       <div className="text-center space-y-1">
         <h3 className="text-base font-semibold">
-          {agentName ? `Hi, I'm ${agentName}` : "Welcome to Multica"}
+          {agentName ? t.chat.hiAgent.replace("{name}", agentName) : t.chat.welcomeTitle}
         </h3>
-        <p className="text-sm text-muted-foreground">Try asking</p>
+        <p className="text-sm text-muted-foreground">{t.chat.tryAsking}</p>
       </div>
       <div className="w-full max-w-xs space-y-2">
-        {STARTER_PROMPTS.map((prompt) => (
+        {starterPrompts.map((prompt) => (
           <button
             key={prompt.text}
             type="button"

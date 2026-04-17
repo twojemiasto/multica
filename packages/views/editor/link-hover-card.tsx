@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { Button } from "@multica/ui/components/ui/button";
 import { useWorkspaceSlug } from "@multica/core/paths";
 import { openLink, isMentionHref } from "./utils/link-handler";
+import { useT } from "../i18n";
 
 function truncateUrl(url: string, max = 48): string {
   if (url.length <= max) return url;
@@ -132,6 +133,7 @@ function LinkHoverCard({
   onCardEnter: () => void;
   onCardLeave: () => void;
 }) {
+  const t = useT();
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const [positioned, setPositioned] = useState(false);
   const slug = useWorkspaceSlug();
@@ -170,9 +172,9 @@ function LinkHoverCard({
     e.preventDefault();
     try {
       await navigator.clipboard.writeText(href);
-      toast.success("Link copied");
+      toast.success(t.editor.linkCopied);
     } catch {
-      toast.error("Failed to copy");
+      toast.error(t.editor.failedToCopy);
     }
   };
 
@@ -207,7 +209,7 @@ function LinkHoverCard({
         variant="ghost"
         className="text-muted-foreground"
         onClick={handleCopy}
-        title="Copy link"
+        title={t.editor.copyLink}
       >
         <Copy className="size-3.5" />
       </Button>
@@ -216,7 +218,7 @@ function LinkHoverCard({
         variant="ghost"
         className="text-muted-foreground"
         onClick={handleOpen}
-        title="Open link"
+        title={t.editor.openLink}
       >
         <ExternalLink className="size-3.5" />
       </Button>

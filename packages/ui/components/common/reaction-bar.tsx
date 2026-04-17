@@ -41,6 +41,10 @@ interface ReactionBarProps {
   getActorName: (type: string, id: string) => string;
   className?: string;
   hideAddButton?: boolean;
+  /** Loading label forwarded to the emoji picker. */
+  loadingLabel?: string;
+  /** "More emojis..." button label forwarded to the emoji picker. */
+  moreEmojisLabel?: string;
 }
 
 function ReactionBar({
@@ -50,6 +54,8 @@ function ReactionBar({
   getActorName,
   className,
   hideAddButton,
+  loadingLabel,
+  moreEmojisLabel,
 }: ReactionBarProps) {
   const grouped = groupReactions(reactions, currentUserId);
 
@@ -78,7 +84,7 @@ function ReactionBar({
           </TooltipContent>
         </Tooltip>
       ))}
-      {!hideAddButton && <QuickEmojiPicker onSelect={onToggle} />}
+      {!hideAddButton && <QuickEmojiPicker onSelect={onToggle} loadingLabel={loadingLabel} moreEmojisLabel={moreEmojisLabel} />}
     </div>
   );
 }

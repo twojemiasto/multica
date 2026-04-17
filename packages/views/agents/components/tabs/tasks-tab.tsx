@@ -10,9 +10,19 @@ import { useWorkspacePaths } from "@multica/core/paths";
 import { issueListOptions } from "@multica/core/issues/queries";
 import { useQuery } from "@tanstack/react-query";
 import { AppLink } from "../../../navigation";
+import { useT } from "../../../i18n";
 import { taskStatusConfig } from "../../config";
 
 export function TasksTab({ agent }: { agent: Agent }) {
+  const t = useT();
+  const statusLabels: Record<string, string> = {
+    queued: t.agent.taskStatusQueued,
+    dispatched: t.agent.taskStatusDispatched,
+    running: t.agent.taskStatusRunning,
+    completed: t.agent.taskStatusCompleted,
+    failed: t.agent.taskStatusFailed,
+    cancelled: t.agent.taskStatusCancelled,
+  };
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [loading, setLoading] = useState(true);
   const wsId = useWorkspaceId();
@@ -63,18 +73,18 @@ export function TasksTab({ agent }: { agent: Agent }) {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-semibold">Task Queue</h3>
+        <h3 className="text-sm font-semibold">{t.agent.tasksTitle}</h3>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Issues assigned to this agent and their execution status.
+          {t.agent.tasksHelp}
         </p>
       </div>
 
       {tasks.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
           <ListTodo className="h-8 w-8 text-muted-foreground/40" />
-          <p className="mt-3 text-sm text-muted-foreground">No tasks in queue</p>
+          <p className="mt-3 text-sm text-muted-foreground">{t.agent.noTasksInQueue}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Assign an issue to this agent to get started.
+            {t.agent.noTasksHelp}
           </p>
         </div>
       ) : (
@@ -113,18 +123,18 @@ export function TasksTab({ agent }: { agent: Agent }) {
                   </div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
                     {isRunning && task.started_at
-                      ? `Started ${new Date(task.started_at).toLocaleString()}`
+                      ? `${t.agent.taskStarted} ${new Date(task.started_at).toLocaleString()}`
                       : task.status === "dispatched" && task.dispatched_at
-                        ? `Dispatched ${new Date(task.dispatched_at).toLocaleString()}`
+                        ? `${t.agent.taskDispatched} ${new Date(task.dispatched_at).toLocaleString()}`
                         : task.status === "completed" && task.completed_at
-                          ? `Completed ${new Date(task.completed_at).toLocaleString()}`
+                          ? `${t.agent.taskCompleted} ${new Date(task.completed_at).toLocaleString()}`
                           : task.status === "failed" && task.completed_at
-                            ? `Failed ${new Date(task.completed_at).toLocaleString()}`
-                            : `Queued ${new Date(task.created_at).toLocaleString()}`}
+                            ? `${t.agent.taskFailed} ${new Date(task.completed_at).toLocaleString()}`
+                            : `${t.agent.taskQueued} ${new Date(task.created_at).toLocaleString()}`}
                   </div>
                 </div>
                 <span className={`shrink-0 text-xs font-medium ${config.color}`}>
-                  {config.label}
+                  {statusLabels[task.status] ?? task.status}
                 </span>
               </>
             );

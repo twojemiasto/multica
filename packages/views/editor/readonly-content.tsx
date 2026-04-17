@@ -37,6 +37,7 @@ import { ImageLightbox } from "./extensions/image-view";
 import { useLinkHover, LinkHoverCard } from "./link-hover-card";
 import { openLink, isMentionHref } from "./utils/link-handler";
 import { preprocessMarkdown } from "./utils/preprocess";
+import { useT } from "../i18n";
 import "./content-editor.css";
 
 // ---------------------------------------------------------------------------
@@ -159,6 +160,7 @@ const components: Partial<Components> = {
 
   // Images — centered with toolbar + lightbox (matches Tiptap ImageView NodeView)
   img: function ReadonlyImage({ src, alt }) {
+    const t = useT();
     const [lightbox, setLightbox] = useState(false);
     const imgSrc = typeof src === "string" ? src : "";
     const imgAlt = alt ?? "";
@@ -170,9 +172,9 @@ const components: Partial<Components> = {
     const handleCopyLink = async () => {
       try {
         await navigator.clipboard.writeText(imgSrc);
-        toast.success("Link copied");
+        toast.success(t.editor.linkCopied);
       } catch {
-        toast.error("Failed to copy link");
+        toast.error(t.editor.failedToCopyLink);
       }
     };
 
@@ -185,13 +187,13 @@ const components: Partial<Components> = {
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
-            <button type="button" onClick={handleView} title="View image">
+            <button type="button" onClick={handleView} title={t.editor.viewImage}>
               <Maximize2 className="size-3.5" />
             </button>
-            <button type="button" onClick={handleDownload} title="Download">
+            <button type="button" onClick={handleDownload} title={t.editor.download}>
               <Download className="size-3.5" />
             </button>
-            <button type="button" onClick={handleCopyLink} title="Copy link">
+            <button type="button" onClick={handleCopyLink} title={t.editor.copyLink}>
               <LinkIcon className="size-3.5" />
             </button>
           </span>

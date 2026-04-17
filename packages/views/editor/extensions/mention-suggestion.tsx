@@ -21,6 +21,23 @@ import { StatusIcon } from "../../issues/components/status-icon";
 import { Badge } from "@multica/ui/components/ui/badge";
 import type { IssueStatus } from "@multica/core/types";
 import type { SuggestionOptions, SuggestionProps } from "@tiptap/suggestion";
+import { en as enDict, pl as plDict, LOCALE_STORAGE_KEY } from "../../i18n";
+import type { Locale } from "../../i18n";
+
+/**
+ * Reads the current locale dictionary outside of the React tree, so the
+ * Tiptap suggestion renderer (which runs in a factory scope) can produce
+ * translated strings. Falls back to English when no cookie/storage is set.
+ */
+function readDict() {
+  let locale: Locale = "en";
+  if (typeof document !== "undefined") {
+    const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${LOCALE_STORAGE_KEY}=(\\w+)`));
+    const fromCookie = match?.[1];
+    if (fromCookie === "pl") locale = "pl";
+  }
+  return locale === "pl" ? plDict : enDict;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,9 +83,10 @@ function groupItems(items: MentionItem[]): MentionGroup[] {
     }
   }
 
+  const dict = readDict();
   const groups: MentionGroup[] = [];
-  if (users.length > 0) groups.push({ label: "Users", items: users });
-  if (issues.length > 0) groups.push({ label: "Issues", items: issues });
+  if (users.length > 0) groups.push({ label: dict.editor.mentionUsers, items: users });
+  if (issues.length > 0) groups.push({ label: dict.editor.mentionIssues, items: issues });
   return groups;
 }
 
@@ -118,7 +136,7 @@ const MentionList = forwardRef<MentionListRef, MentionListProps>(
     if (items.length === 0) {
       return (
         <div className="rounded-md border bg-popover p-2 text-xs text-muted-foreground shadow-md">
-          No results
+          {readDict().editor.noResults}
         </div>
       );
     }
@@ -211,7 +229,7 @@ function MentionRow({
       />
       <span className="truncate font-medium">{item.label}</span>
       {item.type === "agent" && (
-        <Badge variant="outline" className="ml-auto text-[10px] h-4 px-1.5">Agent</Badge>
+        <Badge variant="outline" className="ml-auto text-[10px] h-4 px-1.5">{readDict().editor.mentionAgent}</Badge>
       )}
     </button>
   );
@@ -259,9 +277,10 @@ export function createMentionSuggestion(qc: QueryClient): Omit<
 
     const q = query.toLowerCase();
 
+    const allLabel = readDict().editor.mentionAllMembers;
     const allItem: MentionItem[] =
       "all members".includes(q) || "all".includes(q)
-        ? [{ id: "all", label: "All members", type: "all" as const }]
+        ? [{ id: "all", label: allLabel, type: "all" as const }]
         : [];
 
     const memberItems: MentionItem[] = members

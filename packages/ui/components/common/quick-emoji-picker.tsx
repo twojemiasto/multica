@@ -14,9 +14,13 @@ interface QuickEmojiPickerProps {
   onSelect: (emoji: string) => void;
   align?: "start" | "end";
   className?: string;
+  /** Label shown while the full emoji picker is loading. Defaults to "Loading...". */
+  loadingLabel?: string;
+  /** Label of the "More emojis..." button. Defaults to "More emojis...". */
+  moreEmojisLabel?: string;
 }
 
-function QuickEmojiPicker({ onSelect, align = "start", className }: QuickEmojiPickerProps) {
+function QuickEmojiPicker({ onSelect, align = "start", className, loadingLabel = "Loading...", moreEmojisLabel = "More emojis..." }: QuickEmojiPickerProps) {
   const [open, setOpen] = useState(false);
   const [showFull, setShowFull] = useState(false);
 
@@ -45,7 +49,7 @@ function QuickEmojiPicker({ onSelect, align = "start", className }: QuickEmojiPi
       />
       <PopoverContent align={align} className="w-auto p-0">
         {showFull ? (
-          <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading...</div>}>
+          <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">{loadingLabel}</div>}>
             <EmojiPicker onSelect={handleSelect} />
           </Suspense>
         ) : (
@@ -67,7 +71,7 @@ function QuickEmojiPicker({ onSelect, align = "start", className }: QuickEmojiPi
               onClick={() => setShowFull(true)}
               className="mt-1.5 w-full text-xs text-muted-foreground hover:text-foreground text-center py-1 rounded hover:bg-accent transition-colors"
             >
-              More emojis...
+              {moreEmojisLabel}
             </button>
           </div>
         )}

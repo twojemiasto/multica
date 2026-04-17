@@ -13,6 +13,7 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Label } from "@multica/ui/components/ui/label";
 import { toast } from "sonner";
+import { useT } from "../../../i18n";
 
 interface ArgEntry {
   id: string;
@@ -34,6 +35,7 @@ export function CustomArgsTab({
   agent: Agent;
   onSave: (updates: Partial<Agent>) => Promise<void>;
 }) {
+  const t = useT();
   const [entries, setEntries] = useState<ArgEntry[]>(
     argsToEntries(agent.custom_args ?? []),
   );
@@ -61,9 +63,9 @@ export function CustomArgsTab({
     setSaving(true);
     try {
       await onSave({ custom_args: currentArgs });
-      toast.success("Custom arguments saved");
+      toast.success(t.agent.customArgumentsSaved);
     } catch {
-      toast.error("Failed to save custom arguments");
+      toast.error(t.agent.customArgumentsSaveFailed);
     } finally {
       setSaving(false);
     }
@@ -74,11 +76,10 @@ export function CustomArgsTab({
       <div className="flex items-center justify-between">
         <div>
           <Label className="text-xs text-muted-foreground">
-            Custom Arguments
+            {t.agent.customArguments}
           </Label>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Additional CLI arguments appended to the agent command at launch
-            (e.g. --model claude-sonnet-4-20250514)
+            {t.agent.customArgumentsHelp}
           </p>
         </div>
         <Button
@@ -89,7 +90,7 @@ export function CustomArgsTab({
           className="h-7 gap-1 text-xs"
         >
           <Plus className="h-3 w-3" />
-          Add
+          {t.common.add}
         </Button>
       </div>
       {entries.length > 0 && (
@@ -99,7 +100,7 @@ export function CustomArgsTab({
               <Input
                 value={entry.value}
                 onChange={(e) => updateEntry(index, e.target.value)}
-                placeholder="--model claude-sonnet-4-20250514"
+                placeholder={t.agent.customArgumentsPlaceholder}
                 className="flex-1 font-mono text-xs"
               />
               <button
@@ -120,7 +121,7 @@ export function CustomArgsTab({
         ) : (
           <Save className="h-3.5 w-3.5 mr-1.5" />
         )}
-        Save
+        {t.agent.save}
       </Button>
     </div>
   );

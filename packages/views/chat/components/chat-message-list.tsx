@@ -238,6 +238,7 @@ function ToolGroupCollapsible({
 }) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   const toolCount = items.filter((i) => i.type === "tool_use").length;
+  // Tool counter is a technical label — keep terse and localization-neutral.
   const label = `${toolCount} ${toolCount === 1 ? "tool" : "tools"}`;
 
   return (
