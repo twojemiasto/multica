@@ -40,9 +40,7 @@ import {
 import { Switch } from "@multica/ui/components/ui/switch";
 import {
   ALL_STATUSES,
-  STATUS_CONFIG,
   PRIORITY_ORDER,
-  PRIORITY_CONFIG,
 } from "@multica/core/issues/config";
 import { StatusIcon, PriorityIcon } from ".";
 import { useQuery } from "@tanstack/react-query";
@@ -62,6 +60,7 @@ import {
 } from "@multica/core/issues/stores/issues-scope-store";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@multica/ui/components/ui/tooltip";
 import type { Issue } from "@multica/core/types";
+import { useStatusLabel, usePriorityLabel } from "../../i18n";
 
 // ---------------------------------------------------------------------------
 // HoverCheck — shadcn official pattern (PR #6862)
@@ -396,6 +395,8 @@ export function IssuesHeader({ scopedIssues }: { scopedIssues: Issue[] }) {
   const sortDirection = useViewStore((s) => s.sortDirection);
   const cardProperties = useViewStore((s) => s.cardProperties);
   const act = useViewStoreApi().getState();
+  const statusLabel = useStatusLabel();
+  const priorityLabel = usePriorityLabel();
 
   const counts = useIssueCounts(scopedIssues);
 
@@ -486,7 +487,7 @@ export function IssuesHeader({ scopedIssues }: { scopedIssues: Issue[] }) {
                     >
                       <HoverCheck checked={checked} />
                       <StatusIcon status={s} className="h-3.5 w-3.5" />
-                      {STATUS_CONFIG[s].label}
+                      {statusLabel(s)}
                       {count > 0 && (
                         <span className="ml-auto text-xs text-muted-foreground">
                           {count} {count === 1 ? "issue" : "issues"}
@@ -522,7 +523,7 @@ export function IssuesHeader({ scopedIssues }: { scopedIssues: Issue[] }) {
                     >
                       <HoverCheck checked={checked} />
                       <PriorityIcon priority={p} />
-                      {PRIORITY_CONFIG[p].label}
+                      {priorityLabel(p)}
                       {count > 0 && (
                         <span className="ml-auto text-xs text-muted-foreground">
                           {count} {count === 1 ? "issue" : "issues"}

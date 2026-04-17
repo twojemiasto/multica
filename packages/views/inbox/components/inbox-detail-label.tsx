@@ -1,8 +1,8 @@
 "use client";
 
-import { STATUS_CONFIG, PRIORITY_CONFIG } from "@multica/core/issues/config";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { StatusIcon, PriorityIcon } from "../../issues/components";
+import { useStatusLabel, usePriorityLabel } from "../../i18n";
 import type { InboxItem, InboxItemType, IssueStatus, IssuePriority } from "@multica/core/types";
 
 const typeLabels: Record<InboxItemType, string> = {
@@ -34,12 +34,14 @@ function shortDate(dateStr: string): string {
 
 export function InboxDetailLabel({ item }: { item: InboxItem }) {
   const { getActorName } = useActorName();
+  const statusLabel = useStatusLabel();
+  const priorityLabel = usePriorityLabel();
   const details = item.details ?? {};
 
   switch (item.type) {
     case "status_changed": {
       if (!details.to) return <span>{typeLabels[item.type]}</span>;
-      const label = STATUS_CONFIG[details.to as IssueStatus]?.label ?? details.to;
+      const label = statusLabel(details.to as IssueStatus) ?? details.to;
       return (
         <span className="inline-flex items-center gap-1">
           Set status to
@@ -50,7 +52,7 @@ export function InboxDetailLabel({ item }: { item: InboxItem }) {
     }
     case "priority_changed": {
       if (!details.to) return <span>{typeLabels[item.type]}</span>;
-      const label = PRIORITY_CONFIG[details.to as IssuePriority]?.label ?? details.to;
+      const label = priorityLabel(details.to as IssuePriority) ?? details.to;
       return (
         <span className="inline-flex items-center gap-1">
           Set priority to

@@ -26,7 +26,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@multica/ui/components/ui/dropdown-menu";
-import { ALL_STATUSES, STATUS_CONFIG } from "@multica/core/issues/config";
+import { ALL_STATUSES } from "@multica/core/issues/config";
+import { useStatusLabel } from "../../i18n";
 import { useViewStoreApi, useViewStore } from "@multica/core/issues/stores/view-store-context";
 import type { SortField, SortDirection } from "@multica/core/issues/stores/view-store";
 import { sortIssues } from "../utils/sort";
@@ -329,6 +330,7 @@ function HiddenColumnsPanel({
   issues: Issue[];
 }) {
   const viewStoreApi = useViewStoreApi();
+  const statusLabel = useStatusLabel();
   return (
     <div className="flex w-[240px] shrink-0 flex-col">
       <div className="mb-2 flex items-center gap-2 px-1">
@@ -338,7 +340,6 @@ function HiddenColumnsPanel({
       </div>
       <div className="flex-1 space-y-0.5">
         {hiddenStatuses.map((status) => {
-          const cfg = STATUS_CONFIG[status];
           const count = issues.filter((i) => i.status === status).length;
           return (
             <div
@@ -347,7 +348,7 @@ function HiddenColumnsPanel({
             >
               <div className="flex items-center gap-2">
                 <StatusIcon status={status} className="h-3.5 w-3.5" />
-                <span className="text-sm">{cfg.label}</span>
+                <span className="text-sm">{statusLabel(status)}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-xs text-muted-foreground">{count}</span>

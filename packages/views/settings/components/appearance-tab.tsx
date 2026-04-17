@@ -2,6 +2,7 @@
 
 import { useTheme } from "@multica/ui/components/common/theme-provider";
 import { cn } from "@multica/ui/lib/utils";
+import { useT } from "../../i18n";
 
 const LIGHT_COLORS = {
   titleBar: "#e8e8e8",
@@ -78,20 +79,21 @@ function WindowMockup({
   );
 }
 
-const themeOptions = [
-  { value: "light" as const, label: "Light" },
-  { value: "dark" as const, label: "Dark" },
-  { value: "system" as const, label: "System" },
-];
-
 export function AppearanceTab() {
+  const t = useT();
   const { theme, setTheme } = useTheme();
+
+  const themeOptions = [
+    { value: "light" as const, label: t.settings.themeLight },
+    { value: "dark" as const, label: t.settings.themeDark },
+    { value: "system" as const, label: t.settings.themeSystem },
+  ];
 
   return (
     <div className="space-y-8">
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold">Theme</h2>
-        <div className="flex gap-6" role="radiogroup" aria-label="Theme">
+        <h2 className="text-sm font-semibold">{t.settings.theme}</h2>
+        <div className="flex gap-6" role="radiogroup" aria-label={t.settings.theme}>
           {themeOptions.map((opt) => {
             const active = theme === opt.value;
             return (

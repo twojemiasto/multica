@@ -23,6 +23,7 @@ import { useCreateIssue, useUpdateIssue } from "@multica/core/issues/mutations";
 import { useFileUpload } from "@multica/core/hooks/use-file-upload";
 import { api } from "@multica/core/api";
 import { FileUploadButton } from "@multica/ui/components/common/file-upload-button";
+import { useT } from "../i18n";
 
 // ---------------------------------------------------------------------------
 // Pill trigger — shared rounded-full button style for toolbar
@@ -53,6 +54,7 @@ function PillButton({
 // ---------------------------------------------------------------------------
 
 export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?: Record<string, unknown> | null }) {
+  const t = useT();
   const router = useNavigation();
   const p = useWorkspacePaths();
   const workspaceName = useCurrentWorkspace()?.name;
@@ -129,13 +131,13 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
       }
 
       if (!shouldShowBacklogHint) {
-        toast.custom((t) => (
+        toast.custom((toastId) => (
           <div className="bg-popover text-popover-foreground border rounded-lg shadow-lg p-4 w-[360px]">
             <div className="flex items-center gap-2 mb-2">
               <div className="flex items-center justify-center size-5 rounded-full bg-emerald-500/15 text-emerald-500">
                 <Check className="size-3" />
               </div>
-              <span className="text-sm font-medium">Issue created</span>
+              <span className="text-sm font-medium">{t.issue.created}</span>
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground ml-7">
               <StatusIcon status={issue.status} className="size-3.5 shrink-0" />
@@ -146,16 +148,16 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
               className="ml-7 mt-2 text-sm text-primary hover:underline cursor-pointer"
               onClick={() => {
                 router.push(p.issueDetail(issue.id));
-                toast.dismiss(t);
+                toast.dismiss(toastId);
               }}
             >
-              View issue
+              {t.issue.viewIssue}
             </button>
           </div>
         ), { duration: 5000 });
       }
     } catch {
-      toast.error("Failed to create issue");
+      toast.error(t.issue.createFailed);
     } finally {
       setSubmitting(false);
     }
@@ -199,7 +201,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
             onMoveToTodo={() => {
               updateIssueMutation.mutate(
                 { id: backlogHintIssueId, status: "todo" },
-                { onError: () => toast.error("Failed to update status") },
+                { onError: () => toast.error(t.issue.updateStatusFailed) },
               );
               setBacklogHintIssueId(null);
               onClose();
@@ -207,7 +209,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
           />
         ) : (
           <>
-            <DialogTitle className="sr-only">New Issue</DialogTitle>
+            <DialogTitle className="sr-only">{t.issue.newIssue}</DialogTitle>
 
             {/* Header */}
             <div className="flex items-center justify-between px-5 pt-3 pb-2 shrink-0">
@@ -220,7 +222,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
                     <ChevronRight className="size-3 text-muted-foreground/50" />
                   </>
                 )}
-                <span className="font-medium">{data?.parent_issue_id ? "New sub-issue" : "New issue"}</span>
+                <span className="font-medium">{data?.parent_issue_id ? t.issue.newSubIssue : t.issue.new}</span>
               </div>
               <div className="flex items-center gap-1">
                 <Tooltip>
@@ -234,7 +236,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
                       </button>
                     }
                   />
-                  <TooltipContent side="bottom">{isExpanded ? "Collapse" : "Expand"}</TooltipContent>
+                  <TooltipContent side="bottom">{isExpanded ? t.issue.collapse : t.issue.expand}</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger
@@ -247,7 +249,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
                       </button>
                     }
                   />
-                  <TooltipContent side="bottom">Close</TooltipContent>
+                  <TooltipContent side="bottom">{t.common.close}</TooltipContent>
                 </Tooltip>
               </div>
             </div>
@@ -257,7 +259,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
               <TitleEditor
                 autoFocus
                 defaultValue={draft.title}
-                placeholder="Issue title"
+                placeholder={t.issue.titlePlaceholder}
                 className="text-lg font-semibold"
                 onChange={(v) => updateTitle(v)}
                 onSubmit={handleSubmit}
@@ -269,7 +271,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
               <ContentEditor
                 ref={descEditorRef}
                 defaultValue={draft.description}
-                placeholder="Add description..."
+                placeholder={t.issue.descriptionPlaceholder}
                 onUpdate={(md) => setDraft({ description: md })}
                 onUploadFile={handleUpload}
                 debounceMs={500}
@@ -330,7 +332,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
                 onSelect={(file) => descEditorRef.current?.uploadFile(file)}
               />
               <Button size="sm" onClick={handleSubmit} disabled={!title.trim() || submitting}>
-                {submitting ? "Creating..." : "Create Issue"}
+                {submitting ? t.issue.creating : t.issue.createIssue}
               </Button>
             </div>
           </>

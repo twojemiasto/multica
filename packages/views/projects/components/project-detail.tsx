@@ -18,7 +18,8 @@ import { memberListOptions, agentListOptions } from "@multica/core/workspace/que
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
 import { useActorName } from "@multica/core/workspace/hooks";
-import { PROJECT_STATUS_ORDER, PROJECT_STATUS_CONFIG, PROJECT_PRIORITY_ORDER, PROJECT_PRIORITY_CONFIG } from "@multica/core/projects/config";
+import { PROJECT_STATUS_ORDER, PROJECT_STATUS_CONFIG, PROJECT_PRIORITY_ORDER } from "@multica/core/projects/config";
+import { useProjectStatusLabel, useProjectPriorityLabel } from "../../i18n";
 import { BOARD_STATUSES } from "@multica/core/issues/config";
 import { createIssueViewStore } from "@multica/core/issues/stores/view-store";
 import { ViewStoreProvider, useViewStore } from "@multica/core/issues/stores/view-store-context";
@@ -195,6 +196,8 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const { getActorName } = useActorName();
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
+  const projectStatusLabel = useProjectStatusLabel();
+  const projectPriorityLabel = useProjectPriorityLabel();
   const { data: pinnedItems = [] } = useQuery({
     ...pinListOptions(wsId, userId ?? ""),
     enabled: !!userId,
@@ -271,7 +274,6 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
 
   const issueMetrics = getProjectIssueMetrics(project, projectIssues);
   const statusCfg = PROJECT_STATUS_CONFIG[project.status];
-  const priorityCfg = PROJECT_PRIORITY_CONFIG[project.priority];
 
   const sidebarContent = (
     <div className="space-y-5">
@@ -326,7 +328,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 render={
                   <button type="button" className="inline-flex items-center gap-1.5 text-xs hover:text-foreground transition-colors">
                     <span className={cn("size-2 rounded-full", statusCfg.dotColor)} />
-                    <span>{statusCfg.label}</span>
+                    <span>{projectStatusLabel(project.status)}</span>
                   </button>
                 }
               />
@@ -334,7 +336,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 {PROJECT_STATUS_ORDER.map((s) => (
                   <DropdownMenuItem key={s} onClick={() => handleUpdateField({ status: s as ProjectStatus })}>
                     <span className={cn("size-2 rounded-full", PROJECT_STATUS_CONFIG[s].dotColor)} />
-                    <span>{PROJECT_STATUS_CONFIG[s].label}</span>
+                    <span>{projectStatusLabel(s)}</span>
                     {s === project.status && <Check className="ml-auto h-3.5 w-3.5" />}
                   </DropdownMenuItem>
                 ))}
@@ -347,7 +349,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 render={
                   <button type="button" className="inline-flex items-center gap-1.5 text-xs hover:text-foreground transition-colors">
                     <PriorityIcon priority={project.priority} />
-                    <span>{priorityCfg.label}</span>
+                    <span>{projectPriorityLabel(project.priority)}</span>
                   </button>
                 }
               />
@@ -355,7 +357,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 {PROJECT_PRIORITY_ORDER.map((p) => (
                   <DropdownMenuItem key={p} onClick={() => handleUpdateField({ priority: p as ProjectPriority })}>
                     <PriorityIcon priority={p} />
-                    <span>{PROJECT_PRIORITY_CONFIG[p].label}</span>
+                    <span>{projectPriorityLabel(p)}</span>
                     {p === project.priority && <Check className="ml-auto h-3.5 w-3.5" />}
                   </DropdownMenuItem>
                 ))}

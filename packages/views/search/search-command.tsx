@@ -49,6 +49,7 @@ import {
 import { useTheme } from "@multica/ui/components/common/theme-provider";
 import { useNavigation } from "../navigation";
 import { useSearchStore } from "./search-store";
+import { useStatusLabel, useProjectStatusLabel } from "../i18n";
 
 function HighlightText({ text, query }: { text: string; query: string }) {
   const parts = useMemo(() => {
@@ -144,6 +145,8 @@ export function SearchCommand() {
   const { theme, setTheme } = useTheme();
   const currentWorkspace = useCurrentWorkspace();
   const { data: workspaces = [] } = useQuery(workspaceListOptions());
+  const statusLabel = useStatusLabel();
+  const projectStatusLabel = useProjectStatusLabel();
 
   const recentIssues = useMemo(() => {
     const issueMap = new Map(allIssues.map((i) => [i.id, i]));
@@ -576,7 +579,7 @@ export function SearchCommand() {
                       <span
                         className={`ml-auto text-xs shrink-0 ${PROJECT_STATUS_CONFIG[project.status as ProjectStatus]?.color ?? "text-muted-foreground"}`}
                       >
-                        {PROJECT_STATUS_CONFIG[project.status as ProjectStatus]?.label ?? project.status}
+                        {projectStatusLabel(project.status as ProjectStatus) ?? project.status}
                       </span>
                     </div>
                     {project.match_source === "description" &&
@@ -621,7 +624,7 @@ export function SearchCommand() {
                       <span
                         className={`ml-auto text-xs shrink-0 ${STATUS_CONFIG[issue.status].iconColor}`}
                       >
-                        {STATUS_CONFIG[issue.status].label}
+                        {statusLabel(issue.status)}
                       </span>
                     </div>
                     {issue.match_source === "comment" &&
@@ -665,7 +668,7 @@ export function SearchCommand() {
                     <span
                       className={`ml-auto text-xs shrink-0 ${STATUS_CONFIG[item.status]?.iconColor ?? ""}`}
                     >
-                      {STATUS_CONFIG[item.status]?.label ?? ""}
+                      {statusLabel(item.status) ?? ""}
                     </span>
                   </CommandPrimitive.Item>
                 ))}

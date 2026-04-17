@@ -36,6 +36,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@multica/ui/components/
 import type { Project, ProjectStatus, ProjectPriority, UpdateProjectRequest } from "@multica/core/types";
 import { PageHeader } from "../../layout/page-header";
 import { PriorityIcon } from "../../issues/components/priority-icon";
+import { useProjectStatusLabel, useProjectPriorityLabel } from "../../i18n";
 
 function formatRelativeDate(date: string): string {
   const diff = Date.now() - new Date(date).getTime();
@@ -52,6 +53,8 @@ function ProjectRow({ project }: { project: Project }) {
   const wsPaths = useWorkspacePaths();
   const statusCfg = PROJECT_STATUS_CONFIG[project.status];
   const priorityCfg = PROJECT_PRIORITY_CONFIG[project.priority];
+  const projectStatusLabel = useProjectStatusLabel();
+  const projectPriorityLabel = useProjectPriorityLabel();
   const updateProject = useUpdateProject();
   const { data: members = [] } = useQuery(memberListOptions(wsId));
   const { data: agents = [] } = useQuery(agentListOptions(wsId));
@@ -87,7 +90,7 @@ function ProjectRow({ project }: { project: Project }) {
           render={
             <button type="button" className="flex w-24 items-center justify-center gap-1 shrink-0 rounded px-1 py-0.5 hover:bg-accent/60 transition-colors cursor-pointer">
               <PriorityIcon priority={project.priority} />
-              <span className={cn("text-xs", priorityCfg.color)}>{priorityCfg.label}</span>
+              <span className={cn("text-xs", priorityCfg.color)}>{projectPriorityLabel(project.priority)}</span>
             </button>
           }
         />
@@ -95,7 +98,7 @@ function ProjectRow({ project }: { project: Project }) {
           {PROJECT_PRIORITY_ORDER.map((p) => (
             <DropdownMenuItem key={p} onClick={() => handleUpdate({ priority: p as ProjectPriority })}>
               <PriorityIcon priority={p} />
-              <span>{PROJECT_PRIORITY_CONFIG[p].label}</span>
+              <span>{projectPriorityLabel(p)}</span>
               {p === project.priority && <Check className="ml-auto h-3.5 w-3.5" />}
             </DropdownMenuItem>
           ))}
@@ -110,7 +113,7 @@ function ProjectRow({ project }: { project: Project }) {
               "inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium shrink-0 w-28 justify-center cursor-pointer hover:opacity-80 transition-opacity",
               statusCfg.badgeBg, statusCfg.badgeText,
             )}>
-              {statusCfg.label}
+              {projectStatusLabel(project.status)}
             </button>
           }
         />
@@ -118,7 +121,7 @@ function ProjectRow({ project }: { project: Project }) {
           {PROJECT_STATUS_ORDER.map((s) => (
             <DropdownMenuItem key={s} onClick={() => handleUpdate({ status: s as ProjectStatus })}>
               <span className={cn("size-2 rounded-full", PROJECT_STATUS_CONFIG[s].dotColor)} />
-              <span>{PROJECT_STATUS_CONFIG[s].label}</span>
+              <span>{projectStatusLabel(s)}</span>
               {s === project.status && <Check className="ml-auto h-3.5 w-3.5" />}
             </DropdownMenuItem>
           ))}

@@ -61,7 +61,8 @@ import { Command, CommandDialog, CommandInput, CommandList, CommandEmpty, Comman
 import { AvatarGroup, AvatarGroupCount } from "@multica/ui/components/ui/avatar";
 import { ActorAvatar } from "../../common/actor-avatar";
 import type { UpdateIssueRequest, IssueStatus, IssuePriority, TimelineEntry, Issue } from "@multica/core/types";
-import { ALL_STATUSES, STATUS_CONFIG, PRIORITY_ORDER, PRIORITY_CONFIG } from "@multica/core/issues/config";
+import { ALL_STATUSES, PRIORITY_ORDER, PRIORITY_CONFIG } from "@multica/core/issues/config";
+import { useStatusLabel, usePriorityLabel } from "../../i18n";
 import { StatusIcon, PriorityIcon, StatusPicker, PriorityPicker, DueDatePicker, AssigneePicker, canAssignAgent } from ".";
 import { ProjectPicker } from "../../projects/components/project-picker";
 import { CommentCard } from "./comment-card";
@@ -99,19 +100,21 @@ function shortDate(date: string | null): string {
   });
 }
 
-function statusLabel(status: string): string {
-  return STATUS_CONFIG[status as IssueStatus]?.label ?? status;
-}
-
-function priorityLabel(priority: string): string {
-  return PRIORITY_CONFIG[priority as IssuePriority]?.label ?? priority;
-}
-
 function formatActivity(
   entry: TimelineEntry,
   resolveActorName?: (type: string, id: string) => string,
+  resolveStatusLabel?: (status: IssueStatus) => string,
+  resolvePriorityLabel?: (priority: IssuePriority) => string,
 ): string {
   const details = (entry.details ?? {}) as Record<string, string>;
+  const statusLabel = (status: string): string =>
+    resolveStatusLabel
+      ? (resolveStatusLabel(status as IssueStatus) ?? status)
+      : status;
+  const priorityLabel = (priority: string): string =>
+    resolvePriorityLabel
+      ? (resolvePriorityLabel(priority as IssuePriority) ?? priority)
+      : priority;
   switch (entry.action) {
     case "created":
       return "created this issue";
@@ -338,6 +341,8 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
   const currentMemberRole = members.find((m) => m.user_id === user?.id)?.role;
   const { data: allIssues = [] } = useQuery(issueListOptions(wsId));
   const { getActorName } = useActorName();
+  const statusLabel = useStatusLabel();
+  const priorityLabel = usePriorityLabel();
   const { uploadWithToast } = useFileUpload(api);
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: layoutId,
@@ -745,7 +750,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                         onClick={() => handleUpdateField({ status: s })}
                       >
                         <StatusIcon status={s} className="h-3.5 w-3.5" />
-                        {STATUS_CONFIG[s].label}
+                        {statusLabel(s)}
                         {issue.status === s && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
                       </DropdownMenuItem>
                     ))}
@@ -766,7 +771,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                       >
                         <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${PRIORITY_CONFIG[p].badgeBg} ${PRIORITY_CONFIG[p].badgeText}`}>
                           <PriorityIcon priority={p} className="h-3 w-3" inheritColor />
-                          {PRIORITY_CONFIG[p].label}
+                          {priorityLabel(p)}
                         </span>
                         {issue.priority === p && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
                       </DropdownMenuItem>
@@ -1372,7 +1377,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                             </div>
                             <div className="flex min-w-0 flex-1 items-center gap-1">
                               <span className="shrink-0 font-medium">{getActorName(entry.actor_type, entry.actor_id)}</span>
-                              <span className="truncate">{formatActivity(entry, getActorName)}</span>
+                              <span className="truncate">{formatActivity(entry, getActorName, statusLabel, priorityLabel)}</span>
                               <Tooltip>
                                 <TooltipTrigger
                                   render={

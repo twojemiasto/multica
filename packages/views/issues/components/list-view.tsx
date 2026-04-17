@@ -9,6 +9,7 @@ import type { Issue, IssueStatus } from "@multica/core/types";
 import { useLoadMoreDoneIssues } from "@multica/core/issues/mutations";
 import type { MyIssuesFilter } from "@multica/core/issues/queries";
 import { STATUS_CONFIG } from "@multica/core/issues/config";
+import { useStatusLabel } from "../../i18n";
 import { useModalStore } from "@multica/core/modals";
 import { useViewStore } from "@multica/core/issues/stores/view-store-context";
 import { useIssueSelectionStore } from "@multica/core/issues/stores/selection-store";
@@ -44,6 +45,7 @@ export function ListView({
   const toggleListCollapsed = useViewStore(
     (s) => s.toggleListCollapsed
   );
+  const statusLabel = useStatusLabel();
   const selectedIds = useIssueSelectionStore((s) => s.selectedIds);
   const select = useIssueSelectionStore((s) => s.select);
   const deselect = useIssueSelectionStore((s) => s.deselect);
@@ -117,7 +119,7 @@ export function ListView({
                   <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-aria-expanded/trigger:rotate-90" />
                   <span className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold ${cfg.badgeBg} ${cfg.badgeText}`}>
                     <StatusIcon status={status} className="h-3 w-3" inheritColor />
-                    {cfg.label}
+                    {statusLabel(status)}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {status === "done" ? displayDoneTotal : statusIssues.length}
