@@ -489,6 +489,8 @@ export type AppDict = {
     customArgumentsPlaceholder: string;
     customArgumentsSaved: string;
     customArgumentsSaveFailed: string;
+    launchMode: string;
+    launchArgsPlaceholder: string;
     // Env tab
     environmentVariables: string;
     environmentVariablesHelp: string;

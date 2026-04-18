@@ -87,9 +87,9 @@ export function CustomArgsTab({
           </p>
           {launchHeader && (
             <p className="mt-2 text-xs text-muted-foreground">
-              Launch mode:{" "}
+              {t.agent.launchMode}:{" "}
               <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">
-                {launchHeader} &lt;your args&gt;
+                {launchHeader} {t.agent.launchArgsPlaceholder}
               </code>
             </p>
           )}
