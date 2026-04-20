@@ -532,6 +532,21 @@ export type AppDict = {
     settingsSelectRuntime: string;
     avatarUpdated: string;
     avatarUploadFailed: string;
+    // Model dropdown
+    model: string;
+    modelSelectRuntimeFirst: string;
+    modelDefaultProvider: string;
+    modelDefaultPrefix: string;
+    modelRuntimeOffline: string;
+    modelManagedByRuntime: string;
+    modelManagedByRuntimeHelp: string;
+    modelDiscoveryFailed: string;
+    modelSearchPlaceholder: string;
+    modelDiscovering: string;
+    modelDefaultBadge: string;
+    modelsNoneAvailable: string;
+    modelUseCustom: string;
+    modelClearSelection: string;
   };
   runtime: {
     title: string;
