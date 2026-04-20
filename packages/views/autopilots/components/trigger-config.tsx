@@ -16,7 +16,7 @@ export type TriggerFrequency = "hourly" | "daily" | "weekdays" | "weekly" | "cus
 export interface TriggerConfig {
   frequency: TriggerFrequency;
   time: string; // HH:MM
-  dayOfWeek: number; // 0=Sun … 6=Sat
+  daysOfWeek: number[]; // 0=Sun … 6=Sat — used when frequency === "weekly"
   cronExpression: string; // only used when frequency === "custom"
   timezone: string; // IANA
 }
@@ -97,10 +97,14 @@ export function getDefaultTriggerConfig(): TriggerConfig {
   return {
     frequency: "daily",
     time: "09:00",
-    dayOfWeek: 1,
+    daysOfWeek: [1],
     cronExpression: "0 9 * * 1-5",
     timezone: getLocalTimezone(),
   };
+}
+
+function sortedDays(days: number[]): number[] {
+  return [...new Set(days)].sort((a, b) => a - b);
 }
 
 export function toCronExpression(cfg: TriggerConfig): string {
@@ -114,8 +118,11 @@ export function toCronExpression(cfg: TriggerConfig): string {
       return `${min} ${hour} * * *`;
     case "weekdays":
       return `${min} ${hour} * * 1-5`;
-    case "weekly":
-      return `${min} ${hour} * * ${cfg.dayOfWeek}`;
+    case "weekly": {
+      const days = sortedDays(cfg.daysOfWeek);
+      const dow = days.length > 0 ? days.join(",") : "1";
+      return `${min} ${hour} * * ${dow}`;
+    }
     case "custom":
       return cfg.cronExpression;
   }
@@ -135,8 +142,11 @@ function useDescribeTrigger(): (cfg: TriggerConfig) => string {
       case "weekdays":
         return `${t.autopilot.runsWeekdays} ${formatTime12h(cfg.time)} ${offset}`;
       case "weekly": {
-        const dayKey = DAY_KEYS[cfg.dayOfWeek] ?? "daySun";
-        return `${t.autopilot.runsEvery} ${t.autopilot[dayKey]} ${formatTime12h(cfg.time)} ${offset}`;
+        const days = sortedDays(cfg.daysOfWeek);
+        const dayList = days.length > 0
+          ? days.map((d) => t.autopilot[DAY_KEYS[d] ?? "daySun"]).join(", ")
+          : "—";
+        return `${t.autopilot.runsEvery} ${dayList} ${formatTime12h(cfg.time)} ${offset}`;
       }
       case "custom":
         return `${t.autopilot.runsCustomSchedule}: ${cfg.cronExpression}`;
@@ -260,26 +270,39 @@ export function TriggerConfigSection({
             )}
           </div>
 
-          {/* Day-of-week selector for weekly */}
+          {/* Day-of-week multi-selector for weekly */}
           {config.frequency === "weekly" && (
             <div>
               <label className="text-xs text-muted-foreground">{t.autopilot.dayLabel}</label>
               <div className="flex gap-1 mt-1">
-                {DAY_KEYS.map((dayKey, i) => (
-                  <button
-                    key={dayKey}
-                    type="button"
-                    className={cn(
-                      "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                      config.dayOfWeek === i
-                        ? "bg-foreground text-background"
-                        : "bg-muted text-muted-foreground hover:text-foreground",
-                    )}
-                    onClick={() => onChange({ ...config, dayOfWeek: i })}
-                  >
-                    {t.autopilot[dayKey]}
-                  </button>
-                ))}
+                {DAY_KEYS.map((dayKey, i) => {
+                  const selected = config.daysOfWeek.includes(i);
+                  return (
+                    <button
+                      key={dayKey}
+                      type="button"
+                      aria-pressed={selected}
+                      className={cn(
+                        "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                        selected
+                          ? "bg-foreground text-background"
+                          : "bg-muted text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() => {
+                        const next = selected
+                          ? config.daysOfWeek.filter((d) => d !== i)
+                          : [...config.daysOfWeek, i];
+                        // Keep at least one day selected so the cron stays valid.
+                        onChange({
+                          ...config,
+                          daysOfWeek: next.length > 0 ? next : config.daysOfWeek,
+                        });
+                      }}
+                    >
+                      {t.autopilot[dayKey]}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
