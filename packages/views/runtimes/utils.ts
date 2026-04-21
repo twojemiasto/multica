@@ -39,14 +39,20 @@ const MODEL_PRICING: Record<
   "claude-sonnet-4-6": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
   "claude-opus-4-5": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
   "claude-opus-4-6": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  "claude-opus-4-7": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  "minimax-m2.7": { input: 0.6, output: 2.4, cacheRead: 0.06, cacheWrite: 0.75 },
 };
 
 export function estimateCost(usage: RuntimeUsage): number {
   const model = usage.model;
-  let pricing = MODEL_PRICING[model];
+  // Opencode/pi/ollama-cloud expose IDs as `provider/model` — strip the
+  // provider prefix so the catalog keyed on bare model names still hits.
+  const slash = model.lastIndexOf("/");
+  const bare = slash >= 0 ? model.slice(slash + 1) : model;
+  let pricing = MODEL_PRICING[model] ?? MODEL_PRICING[bare];
   if (!pricing) {
     for (const [key, p] of Object.entries(MODEL_PRICING)) {
-      if (model.startsWith(key)) {
+      if (model.startsWith(key) || bare.startsWith(key)) {
         pricing = p;
         break;
       }
