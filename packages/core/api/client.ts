@@ -238,6 +238,7 @@ export class ApiClient {
     if (params?.assignee_id) search.set("assignee_id", params.assignee_id);
     if (params?.assignee_ids?.length) search.set("assignee_ids", params.assignee_ids.join(","));
     if (params?.creator_id) search.set("creator_id", params.creator_id);
+    if (params?.project_id) search.set("project_id", params.project_id);
     if (params?.open_only) search.set("open_only", "true");
     return this.fetch(`/api/issues?${search}`);
   }
@@ -542,7 +543,11 @@ export class ApiClient {
   }
 
   // App Config
-  async getConfig(): Promise<{ cdn_domain: string }> {
+  async getConfig(): Promise<{
+    cdn_domain: string;
+    posthog_key?: string;
+    posthog_host?: string;
+  }> {
     return this.fetch("/api/config");
   }
 

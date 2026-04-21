@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/analytics"
 	"github.com/multica-ai/multica/server/internal/middleware"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
@@ -262,7 +263,7 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			"launched_by": req.LaunchedBy,
 		})
 
-		registered, err := h.Queries.UpsertAgentRuntime(r.Context(), db.UpsertAgentRuntimeParams{
+		row, err := h.Queries.UpsertAgentRuntime(r.Context(), db.UpsertAgentRuntimeParams{
 			WorkspaceID: parseUUID(req.WorkspaceID),
 			DaemonID:    strToText(req.DaemonID),
 			Name:        name,
@@ -276,6 +277,34 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to register runtime: "+err.Error())
 			return
+		}
+
+		registered := db.AgentRuntime{
+			ID:             row.ID,
+			WorkspaceID:    row.WorkspaceID,
+			DaemonID:       row.DaemonID,
+			Name:           row.Name,
+			RuntimeMode:    row.RuntimeMode,
+			Provider:       row.Provider,
+			Status:         row.Status,
+			DeviceInfo:     row.DeviceInfo,
+			Metadata:       row.Metadata,
+			LastSeenAt:     row.LastSeenAt,
+			CreatedAt:      row.CreatedAt,
+			UpdatedAt:      row.UpdatedAt,
+			OwnerID:        row.OwnerID,
+			LegacyDaemonID: row.LegacyDaemonID,
+		}
+
+		if row.Inserted {
+			h.Analytics.Capture(analytics.RuntimeRegistered(
+				uuidToString(ownerID),
+				req.WorkspaceID,
+				uuidToString(registered.ID),
+				provider,
+				runtime.Version,
+				req.CLIVersion,
+			))
 		}
 
 		// Seamless migration from the previous hostname-derived identity. The
@@ -541,10 +570,16 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		logClaimEndpointSlow(runtimeID, outcome, start, authMs, claimMs, buildMs)
 	}()
 
-	// Verify the caller owns this runtime's workspace.
-	if _, ok := h.requireDaemonRuntimeAccess(w, r, runtimeID); !ok {
+	// Verify the caller owns this runtime's workspace. The runtime's
+	// workspace_id is the authoritative value a claimed task must match
+	// below — a task whose resolved workspace doesn't equal this runtime's
+	// workspace is rejected even if it was enqueued against this
+	// runtime_id (defense-in-depth against upstream routing bugs).
+	runtime, ok := h.requireDaemonRuntimeAccess(w, r, runtimeID)
+	if !ok {
 		return
 	}
+	runtimeWorkspaceID := uuidToString(runtime.WorkspaceID)
 	authMs = time.Since(start).Milliseconds()
 
 	claimStart := time.Now()
@@ -691,6 +726,33 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Workspace isolation check: the daemon uses this response's workspace_id
+	// as the only authority for MULTICA_WORKSPACE_ID in the agent env. An
+	// empty value would make the CLI silently fall back to the user-global
+	// config and talk to whatever workspace the user happened to last
+	// configure; a value that doesn't match the runtime's workspace means
+	// upstream routed a foreign-workspace task here. Both cases must hard-
+	// fail AND cancel the just-dispatched task so the queue / agent status
+	// don't sit stuck until the stale-task sweeper fires minutes later.
+	if resp.WorkspaceID == "" || resp.WorkspaceID != runtimeWorkspaceID {
+		outcome = "error_workspace"
+		slog.Error("task claim: workspace isolation check failed, cancelling task",
+			"task_id", uuidToString(task.ID),
+			"runtime_id", runtimeID,
+			"runtime_workspace", runtimeWorkspaceID,
+			"resolved_workspace", resp.WorkspaceID,
+			"has_issue", task.IssueID.Valid,
+			"has_chat", task.ChatSessionID.Valid,
+			"has_autopilot_run", task.AutopilotRunID.Valid,
+		)
+		if _, cerr := h.TaskService.CancelTask(r.Context(), task.ID); cerr != nil {
+			slog.Error("task claim: cancel after workspace check failed",
+				"task_id", uuidToString(task.ID), "error", cerr)
+		}
+		writeError(w, http.StatusInternalServerError, "task workspace isolation check failed")
+		return
+	}
+
 	slog.Info("task claimed by runtime", "task_id", uuidToString(task.ID), "runtime_id", runtimeID, "agent_id", uuidToString(task.AgentID), "prior_session", resp.PriorSessionID)
 	writeJSON(w, http.StatusOK, map[string]any{"task": resp})
 }
@@ -805,8 +867,46 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.emitIssueExecutedOnFirstCompletion(r, task)
+
 	slog.Info("task completed", "task_id", taskID, "agent_id", uuidToString(task.AgentID))
 	writeJSON(w, http.StatusOK, taskToResponse(*task))
+}
+
+// emitIssueExecutedOnFirstCompletion atomically flips issue.first_executed_at
+// and fires the issue_executed analytics event iff this is the first task on
+// the issue to reach terminal done. Retries / re-assignments / comment-
+// triggered follow-ups hit the WHERE first_executed_at IS NULL clause and
+// no-op, so the funnel counts unique issues, not tasks.
+func (h *Handler) emitIssueExecutedOnFirstCompletion(r *http.Request, task *db.AgentTaskQueue) {
+	if task == nil {
+		return
+	}
+	marked, err := h.Queries.MarkIssueFirstExecuted(r.Context(), task.IssueID)
+	if err != nil {
+		if !isNotFound(err) {
+			slog.Warn("analytics: mark issue first-executed failed", "issue_id", uuidToString(task.IssueID), "error", err)
+		}
+		return
+	}
+	var durationMS int64
+	if task.StartedAt.Valid && task.CompletedAt.Valid {
+		durationMS = task.CompletedAt.Time.Sub(task.StartedAt.Time).Milliseconds()
+	}
+	// distinct_id prefers the human creator so agent-driven events flow into
+	// the issue-author's person profile (same place signup and
+	// workspace_created land). Agent-created issues keep the agent id with a
+	// prefix so PostHog doesn't merge them into a user by accident.
+	distinct := uuidToString(marked.CreatorID)
+	if marked.CreatorType == "agent" {
+		distinct = "agent:" + distinct
+	}
+	h.Analytics.Capture(analytics.IssueExecuted(
+		distinct,
+		uuidToString(marked.WorkspaceID),
+		uuidToString(marked.ID),
+		durationMS,
+	))
 }
 
 // ReportTaskUsage stores per-task token usage. Called independently of
